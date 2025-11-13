@@ -20,10 +20,11 @@ void main() {
 
 /// Top-level widget that hosts the simple single-page experience for now.
 const _sherpaBg = Color(0xFF101218);
-const _bikeAccent = Color(0xFF4CDCA4);
-const _runAccent = Color(0xFFC6A0FF);
-const _bikeLabelGlow = Color(0xF2E0FCF0);
-const _runLabelGlow = Color(0xFFF4EBFF);
+const _bikeAccent = Color(0xFF2BD88D);
+const _runAccent = Color(0xFF5D8EFF);
+const _bikeLabelGlow = Color(0xFFE0FFF4);
+const _runLabelGlow = Color(0xFFDFE6FF);
+const _neonButtonFg = Color(0xFF041C11);
 
 class RouteGenApp extends StatelessWidget {
   const RouteGenApp({super.key});
@@ -33,14 +34,14 @@ class RouteGenApp extends StatelessWidget {
     return MaterialApp(
       title: 'Route Gen',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: _bikeAccent),
         useMaterial3: true,
         scaffoldBackgroundColor: _sherpaBg,
         canvasColor: _sherpaBg,
       ),
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
+          seedColor: _bikeAccent,
           brightness: Brightness.dark,
         ),
         scaffoldBackgroundColor: _sherpaBg,
@@ -61,8 +62,7 @@ class HelloScreen extends StatefulWidget {
 }
 
 class _HelloScreenState extends State<HelloScreen> {
-  int _selectedToolIndex = 3;
-  int _focusedActionIndex = -1;
+  int _selectedToolIndex = 2;
   bool _isBikeMode = true;
   double _preferredMiles = 20;
   final MenuController _layerMenuController = MenuController();
@@ -107,6 +107,10 @@ class _HelloScreenState extends State<HelloScreen> {
       minimumSize: const Size(30, 30),
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       iconSize: 18,
+    );
+    final neonIconStyle = compactButtonStyle.copyWith(
+      backgroundColor: WidgetStatePropertyAll(accentColor),
+      foregroundColor: const WidgetStatePropertyAll(_neonButtonFg),
     );
 
     return Theme(
@@ -156,268 +160,318 @@ class _HelloScreenState extends State<HelloScreen> {
               child: SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.only(right: 16, top: 12, bottom: 12),
-                  child: Container(
+                  child: ConstrainedBox(
                     key: const ValueKey('actions-toolbar'),
-                    constraints: const BoxConstraints(minWidth: 36, maxWidth: 40),
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    decoration: BoxDecoration(
-                      color: _sherpaBg,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 16,
-                          offset: Offset(0, 6),
-                        ),
-                      ],
+                    constraints: const BoxConstraints(
+                      minWidth: 44,
+                      maxWidth: 54,
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                      Tooltip(
-                        message: _isBikeMode ? 'Switch to running' : 'Switch to biking',
-                        child: IconButton.filled(
-                          key: const ValueKey('mode-toggle-button'),
-                          style: compactButtonStyle,
-                          onPressed: () {
-                            setState(() {
-                              _isBikeMode = !_isBikeMode;
-                            });
-                          },
-                          icon: Icon(
-                            _isBikeMode
-                                ? Icons.directions_bike
-                                : Icons.directions_run,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Color.fromRGBO(43, 216, 141, 0.18),
+                                Color.fromRGBO(61, 125, 255, 0.18),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.18),
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 2,
+                              horizontal: 1,
+                            ),
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.48),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.08),
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.35),
+                                    blurRadius: 36,
+                                    offset: const Offset(0, 20),
+                                  ),
+                                ],
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 6,
+                                  horizontal: 0,
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    Tooltip(
+                                      message: 'Preferred distance',
+                                      child: _DistanceBadge(
+                                        miles: _preferredMiles,
+                                        accentColor: accentColor,
+                                        onTap: () => _openDistanceSheet(),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Tooltip(
+                                      message: _isBikeMode
+                                          ? 'Switch to running'
+                                          : 'Switch to biking',
+                                      child: IconButton.filled(
+                                        key: const ValueKey('mode-toggle-button'),
+                                        style: neonIconStyle,
+                                        onPressed: () {
+                                          setState(() {
+                                            _isBikeMode = !_isBikeMode;
+                                          });
+                                        },
+                                        icon: Icon(
+                                          _isBikeMode
+                                              ? Icons.directions_bike
+                                              : Icons.directions_run,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Tooltip(
+                                      message: 'Search routes or places',
+                                      child: IconButton.filledTonal(
+                                        key: const ValueKey('open-search-button'),
+                                        style: compactButtonStyle,
+                                        onPressed: _openSearchSheet,
+                                        icon: const Icon(Icons.search),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    MenuAnchor(
+                                      controller: _layerMenuController,
+                                      alignmentOffset: const Offset(-12, 8),
+                                      menuChildren: _layerOptions
+                                          .map(
+                                            (layer) => MenuItemButton(
+                                              onPressed: () =>
+                                                  _layerMenuController.close(),
+                                              child: Text(layer),
+                                            ),
+                                          )
+                                          .toList(),
+                                      builder: (context, controller, child) {
+                                        return Tooltip(
+                                          message: 'Layer controls',
+                                          child: IconButton.filledTonal(
+                                            key: const ValueKey('layer-menu-button'),
+                                            style: compactButtonStyle,
+                                            onPressed: () {
+                                              controller.isOpen
+                                                  ? controller.close()
+                                                  : controller.open();
+                                            },
+                                            icon: const Icon(Icons.layers_outlined),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Divider(
+                                      thickness: 1,
+                                      indent: 16,
+                                      endIndent: 16,
+                                      color: themedData.colorScheme.onSurface
+                                          .withValues(alpha: 0.1),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Tooltip(
+                                      message: 'Undo last change',
+                                      child: IconButton.filled(
+                                        key: const ValueKey('undo-button'),
+                                        style: neonIconStyle,
+                                        onPressed: () {
+                                          // TODO: hook up undo stack
+                                        },
+                                        icon: const Icon(Icons.undo),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Tooltip(
+                                      message: 'Redo change',
+                                      child: IconButton.filled(
+                                        key: const ValueKey('redo-button'),
+                                        style: neonIconStyle,
+                                        onPressed: () {
+                                          // TODO: hook up redo stack
+                                        },
+                                        icon: const Icon(Icons.redo),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Tooltip(
+                                      message: 'Clear current route',
+                                      child: IconButton.filledTonal(
+                                        key: const ValueKey('clear-button'),
+                                        style: compactButtonStyle,
+                                        onPressed: () {
+                                          // TODO: implement clear route
+                                        },
+                                        icon: const Icon(Icons.close),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Tooltip(
+                                      message: 'Download route data',
+                                      child: IconButton.filledTonal(
+                                        key: const ValueKey('download-button'),
+                                        style: compactButtonStyle,
+                                        onPressed: () {
+                                          // TODO: implement download
+                                        },
+                                        icon: const Icon(Icons.download),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      Tooltip(
-                        message: 'Search routes or places',
-                        child: IconButton.filledTonal(
-                          key: const ValueKey('open-search-button'),
-                          style: compactButtonStyle,
-                          onPressed: _openSearchSheet,
-                          icon: const Icon(Icons.search),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Tooltip(
-                        message: 'Preferred distance',
-                        child: _DistanceBadge(
-                          miles: _preferredMiles,
-                          accentColor: accentColor,
-                          onTap: () => _openDistanceSheet(),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      MenuAnchor(
-                        controller: _layerMenuController,
-                        alignmentOffset: const Offset(-12, 8),
-                        menuChildren: _layerOptions
-                            .map(
-                              (layer) => MenuItemButton(
-                                onPressed: () => _layerMenuController.close(),
-                                child: Text(layer),
-                              ),
-                            )
-                            .toList(),
-                        builder: (context, controller, child) {
-                          return Tooltip(
-                            message: 'Layer controls',
-                            child: IconButton.filledTonal(
-                              key: const ValueKey('layer-menu-button'),
-                              style: compactButtonStyle,
-                              onPressed: () {
-                                controller.isOpen
-                                    ? controller.close()
-                                    : controller.open();
-                              },
-                              icon: const Icon(Icons.layers_outlined),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 10),
-                      Divider(
-                        thickness: 1,
-                        indent: 16,
-                        endIndent: 16,
-                        color: themedData.colorScheme.onSurface.withValues(alpha: 0.1),
-                      ),
-                      const SizedBox(height: 10),
-                      Tooltip(
-                        message: 'Undo last change',
-                        child: IconButton.filled(
-                          key: const ValueKey('undo-button'),
-                          style: compactButtonStyle,
-                          onPressed: () {
-                            // TODO: hook up undo stack
-                          },
-                          icon: const Icon(Icons.undo),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Tooltip(
-                        message: 'Redo change',
-                        child: IconButton.filled(
-                          key: const ValueKey('redo-button'),
-                          style: compactButtonStyle,
-                          onPressed: () {
-                            // TODO: hook up redo stack
-                          },
-                          icon: const Icon(Icons.redo),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Tooltip(
-                        message: 'Clear current route',
-                        child: IconButton.filledTonal(
-                          key: const ValueKey('clear-button'),
-                          style: compactButtonStyle,
-                          onPressed: () {
-                            // TODO: implement clear route
-                          },
-                          icon: const Icon(Icons.close),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Tooltip(
-                        message: 'Download route data',
-                        child: IconButton.filledTonal(
-                          key: const ValueKey('download-button'),
-                          style: compactButtonStyle,
-                          onPressed: () {
-                            // TODO: implement download
-                          },
-                          icon: const Icon(Icons.download),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
           ],
         ),
-        bottomNavigationBar: NavigationBarTheme(
-          data: NavigationBarThemeData(
-            height: 52,
-            backgroundColor: Colors.transparent,
-            indicatorColor: Colors.transparent,
-            labelTextStyle: WidgetStateProperty.resolveWith(
-              (states) => TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 11,
-                color: states.contains(WidgetState.selected)
-                    ? ( _isBikeMode ? _bikeLabelGlow : _runLabelGlow )
-                    : themedData.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            iconTheme: WidgetStateProperty.resolveWith(
-              (states) => IconThemeData(
-                color: states.contains(WidgetState.selected)
-                    ? ( _isBikeMode ? _bikeLabelGlow : _runLabelGlow )
-                    : themedData.colorScheme.onSurfaceVariant,
-                size: 22,
-              ),
-            ),
-          ),
-          child: SafeArea(
-            top: false,
-            bottom: false,
-            child: Container(
-              color: _sherpaBg,
-              padding: EdgeInsets.only(
-                left: 16,
-                right: 16,
-                top: 8,
-                bottom: 2 + mediaQuery.padding.bottom,
-              ),
-              child: DecoratedBox(
-                decoration: const BoxDecoration(
-                  borderRadius: BorderRadius.all(Radius.circular(18)),
-                  border: Border.fromBorderSide(
-                    BorderSide(
-                      color: Color.fromRGBO(134, 176, 255, 0.26),
-                      width: 1,
+        bottomNavigationBar: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color.fromRGBO(43, 216, 141, 0.18),
+                        Color.fromRGBO(61, 125, 255, 0.18),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.18),
                     ),
                   ),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color.fromRGBO(18, 26, 42, 0.92),
-                      Color.fromRGBO(20, 28, 44, 0.92),
-                      Color.fromRGBO(18, 32, 34, 0.9),
-                    ],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Color.fromRGBO(0, 0, 0, 0.42),
-                      blurRadius: 60,
-                      offset: Offset(0, 28),
-                    ),
-                  ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
-                  child: NavigationBar(
-                    backgroundColor: Colors.transparent,
-                    surfaceTintColor: Colors.transparent,
-                    elevation: 0,
-                    labelBehavior:
-                        NavigationDestinationLabelBehavior.alwaysShow,
-                    indicatorShape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(14)),
-                    ),
-                    selectedIndex: _selectedToolIndex,
-                    onDestinationSelected: (index) {
-                      if (index == 3) {
-                        setState(() => _focusedActionIndex = 3);
-                        _openProfileSheet();
-                      } else {
-                        setState(() => _focusedActionIndex = index);
-                        if (index == 4) {
-                          // TODO: Download action
-                        }
-                      }
-                    },
-                    destinations: [
-                      NavigationDestination(
-                        icon: _ZoneNavChip(active: _focusedActionIndex == 0),
-                        selectedIcon: _ZoneNavChip(active: true),
-                        label: 'Zone',
-                      ),
-                      NavigationDestination(
-                        icon: _AvoidNavChip(active: _focusedActionIndex == 1),
-                        selectedIcon: _AvoidNavChip(active: true),
-                        label: 'Avoid',
-                      ),
-                      NavigationDestination(
-                        icon: _GenerateNavChip(active: _focusedActionIndex == 2),
-                        selectedIcon: _GenerateNavChip(active: true),
-                        label: 'Generate',
-                      ),
-                      NavigationDestination(
-                        icon: _DownloadNavChip(
-                          active: _focusedActionIndex == 3,
-                          icon: Icons.tune,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.48),
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.08),
                         ),
-                        selectedIcon: _DownloadNavChip(
-                          active: true,
-                          icon: Icons.tune,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.35),
+                            blurRadius: 36,
+                            offset: const Offset(0, 20),
+                          ),
+                        ],
+                      ),
+                      child: NavigationBarTheme(
+                        data: NavigationBarThemeData(
+                          height: 66,
+                          indicatorShape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          indicatorColor: accentColor.withValues(alpha: 0.24),
+                          labelTextStyle: WidgetStateProperty.resolveWith((states) {
+                            final selected = states.contains(WidgetState.selected);
+                            return TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 11,
+                              letterSpacing: 0.2,
+                              color: selected
+                                  ? accentColor
+                                  : Colors.white.withValues(alpha: 0.8),
+                            );
+                          }),
+                          iconTheme: WidgetStateProperty.resolveWith(
+                            (states) => IconThemeData(
+                              color: states.contains(WidgetState.selected)
+                                  ? accentColor
+                                  : Colors.white.withValues(alpha: 0.78),
+                              size: 22,
+                            ),
+                          ),
                         ),
-                        label: 'Profile',
+                        child: NavigationBar(
+                          backgroundColor: Colors.transparent,
+                          surfaceTintColor: Colors.transparent,
+                          elevation: 0,
+                          selectedIndex: _selectedToolIndex,
+                          labelBehavior:
+                              NavigationDestinationLabelBehavior.alwaysShow,
+                          onDestinationSelected: (index) {
+                            if (index <= 2) {
+                              setState(() => _selectedToolIndex = index);
+                              return;
+                            }
+                            if (index == 3) {
+                              _openProfileSheet();
+                            } else if (index == 4) {
+                              // TODO: Download action
+                            }
+                          },
+                          destinations: [
+                            const NavigationDestination(
+                              icon: Icon(Icons.layers_outlined),
+                              selectedIcon: Icon(Icons.layers),
+                              label: 'Zone',
+                            ),
+                            const NavigationDestination(
+                              icon: Icon(Icons.block_outlined),
+                              selectedIcon: Icon(Icons.block),
+                              label: 'Avoid',
+                            ),
+                            NavigationDestination(
+                              icon: _GenerateNavChip(
+                                accentColor: accentColor,
+                                active: false,
+                              ),
+                              selectedIcon: _GenerateNavChip(
+                                accentColor: accentColor,
+                                active: true,
+                              ),
+                              label: 'Generate',
+                            ),
+                            const NavigationDestination(
+                              icon: Icon(Icons.tune_outlined),
+                              selectedIcon: Icon(Icons.tune),
+                              label: 'Profile',
+                            ),
+                            const NavigationDestination(
+                              icon: Icon(Icons.download_outlined),
+                              selectedIcon: Icon(Icons.download),
+                              label: 'Download',
+                            ),
+                          ],
+                        ),
                       ),
-                      NavigationDestination(
-                        icon: _DownloadNavChip(active: _focusedActionIndex == 4),
-                        selectedIcon: _DownloadNavChip(active: true),
-                        label: 'Download',
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -628,9 +682,7 @@ extension on _HelloScreenState {
   }
 
   void _openProfileSheet() {
-    final accentColor = _isBikeMode
-        ? const Color(0xFF70E0A0)
-        : Theme.of(context).colorScheme.primary;
+    final accentColor = _isBikeMode ? _bikeAccent : _runAccent;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -833,17 +885,19 @@ extension on _HelloScreenState {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 16),
-                          _MultiRoutePanel(
-                            closeLoop: closeLoop,
-                            mapAddsStops: mapAddsStops,
-                            stopsCount: stopsCount,
-                            onCloseLoopChanged: (value) =>
-                                setSheetState(() => closeLoop = value),
-                            onMapAddsStopsChanged: (value) =>
-                                setSheetState(() => mapAddsStops = value),
-                          ),
-                          const SizedBox(height: 16),
+                          if (routeMode == 1) ...[
+                            const SizedBox(height: 16),
+                            _MultiRoutePanel(
+                              closeLoop: closeLoop,
+                              mapAddsStops: mapAddsStops,
+                              stopsCount: stopsCount,
+                              onCloseLoopChanged: (value) =>
+                                  setSheetState(() => closeLoop = value),
+                              onMapAddsStopsChanged: (value) =>
+                                  setSheetState(() => mapAddsStops = value),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
                           _DualBiasCard(
                             title: 'Elevation preference',
                             description:
@@ -1700,172 +1754,26 @@ class _DistanceBadge extends StatelessWidget {
   }
 }
 
-class _AvoidNavChip extends StatelessWidget {
-  const _AvoidNavChip({this.active = false});
-
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = active
-        ? const [
-            Color.fromRGBO(240, 108, 136, 0.98),
-            Color.fromRGBO(160, 24, 48, 0.96),
-          ]
-        : const [
-            Color.fromRGBO(214, 58, 88, 0.96),
-            Color.fromRGBO(124, 12, 32, 0.92),
-          ];
-    return SizedBox(
-      width: 64,
-      height: 34,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: ColoredBox(
-                color: Colors.white.withValues(alpha: 0.08),
-              ),
-            ),
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: colors
-                        .map(
-                          (c) => c.withValues(alpha: active ? 0.38 : 0.3),
-                        )
-                        .toList(),
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.18),
-                    width: 0.8,
-                  ),
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.2),
-                      Colors.white.withValues(alpha: 0.05),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Center(
-              child: Icon(
-                Icons.block,
-                color: Colors.white.withValues(alpha: 0.92),
-                size: 18,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ZoneNavChip extends StatelessWidget {
-  const _ZoneNavChip({this.active = false});
-
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = active
-        ? const [
-            Color.fromRGBO(136, 178, 255, 0.95),
-            Color.fromRGBO(62, 102, 215, 0.92),
-          ]
-        : const [
-            Color.fromRGBO(112, 154, 255, 0.9),
-            Color.fromRGBO(52, 82, 200, 0.88),
-          ];
-    return SizedBox(
-      width: 64,
-      height: 34,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: ColoredBox(
-                color: Colors.white.withValues(alpha: 0.07),
-              ),
-            ),
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: colors
-                        .map(
-                          (c) => c.withValues(alpha: active ? 0.4 : 0.28),
-                        )
-                        .toList(),
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.12),
-                    width: 0.9,
-                  ),
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.16),
-                      Colors.white.withValues(alpha: 0.03),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const Center(
-              child: _ActivityZoneIcon(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _GenerateNavChip extends StatelessWidget {
-  const _GenerateNavChip({this.active = false});
+  const _GenerateNavChip({
+    required this.accentColor,
+    this.active = false,
+  });
 
+  final Color accentColor;
   final bool active;
 
   @override
   Widget build(BuildContext context) {
-    final colors = active
-        ? const [
-            Color.fromRGBO(96, 235, 180, 0.95),
-            Color.fromRGBO(60, 200, 150, 0.92),
-          ]
-        : const [
-            Color.fromRGBO(76, 220, 164, 0.9),
-            Color.fromRGBO(28, 140, 102, 0.85),
-          ];
+    Color shift(Color color, double delta) {
+      final hsl = HSLColor.fromColor(color);
+      final lightness = (hsl.lightness + delta).clamp(0.0, 1.0);
+      return hsl.withLightness(lightness).toColor();
+    }
+
+    final startColor = shift(accentColor, active ? 0.08 : -0.02);
+    final endColor = shift(accentColor, active ? -0.15 : -0.22);
+
     return SizedBox(
       width: 64,
       height: 34,
@@ -1875,7 +1783,7 @@ class _GenerateNavChip extends StatelessWidget {
           children: [
             Positioned.fill(
               child: ColoredBox(
-                color: Colors.white.withValues(alpha: 0.07),
+                color: accentColor.withValues(alpha: 0.08),
               ),
             ),
             Positioned.fill(
@@ -1884,15 +1792,15 @@ class _GenerateNavChip extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: colors
+                    colors: [startColor, endColor]
                         .map(
-                          (c) => c.withValues(alpha: active ? 0.4 : 0.28),
+                          (c) => c.withValues(alpha: active ? 0.65 : 0.42),
                         )
                         .toList(),
                   ),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.14),
+                    color: accentColor.withValues(alpha: 0.5),
                     width: 1.0,
                   ),
                 ),
@@ -1906,7 +1814,7 @@ class _GenerateNavChip extends StatelessWidget {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Colors.white.withValues(alpha: 0.17),
+                      Colors.white.withValues(alpha: 0.2),
                       Colors.white.withValues(alpha: 0.04),
                     ],
                   ),
@@ -1916,89 +1824,9 @@ class _GenerateNavChip extends StatelessWidget {
             Center(
               child: Icon(
                 Icons.auto_mode,
-                color: Colors.white.withValues(alpha: 0.9),
+                color:
+                    active ? _neonButtonFg : Colors.white.withValues(alpha: 0.9),
                 size: 24,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DownloadNavChip extends StatelessWidget {
-  const _DownloadNavChip({
-    this.active = false,
-    this.icon = Icons.download,
-  });
-
-  final bool active;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = active
-        ? const [
-            Color.fromRGBO(136, 178, 255, 0.95),
-            Color.fromRGBO(62, 102, 215, 0.92),
-          ]
-        : const [
-            Color.fromRGBO(112, 154, 255, 0.9),
-            Color.fromRGBO(52, 82, 200, 0.88),
-          ];
-    return SizedBox(
-      width: 64,
-      height: 34,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: ColoredBox(
-                color: Colors.white.withValues(alpha: 0.05),
-              ),
-            ),
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: colors
-                        .map(
-                          (c) => c.withValues(alpha: active ? 0.4 : 0.28),
-                        )
-                        .toList(),
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.12),
-                    width: 0.9,
-                  ),
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.15),
-                      Colors.white.withValues(alpha: 0.04),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Center(
-              child: Icon(
-                icon,
-                color: Colors.white.withValues(alpha: 0.92),
-                size: 18,
               ),
             ),
           ],
@@ -2203,69 +2031,4 @@ class _MultiToggleTile extends StatelessWidget {
   }
 }
 
-class _ActivityZoneIcon extends StatelessWidget {
-  const _ActivityZoneIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 20,
-      height: 20,
-      child: CustomPaint(
-        painter: _ActivityZonePainter(
-          color: Colors.white.withValues(alpha: 0.92),
-        ),
-      ),
-    );
-  }
-}
-
-class _ActivityZonePainter extends CustomPainter {
-  const _ActivityZonePainter({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final stroke = size.width * 0.08;
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..strokeJoin = StrokeJoin.round;
-
-    final outer = RRect.fromRectAndRadius(
-      Rect.fromLTWH(stroke, stroke, size.width - 2 * stroke,
-          size.height - 2 * stroke),
-      Radius.circular(size.width * 0.18),
-    );
-    canvas.drawRRect(outer, paint);
-
-    paint.style = PaintingStyle.fill;
-    final circleRadius = size.width * 0.09;
-    final positions = [
-      Offset(size.width * 0.2, size.height * 0.2),
-      Offset(size.width * 0.8, size.height * 0.2),
-      Offset(size.width * 0.2, size.height * 0.8),
-      Offset(size.width * 0.8, size.height * 0.8),
-    ];
-    for (final pos in positions) {
-      canvas.drawCircle(pos, circleRadius, paint);
-    }
-
-    final inner = RRect.fromRectAndRadius(
-      Rect.fromLTWH(size.width * 0.32, size.height * 0.32,
-          size.width * 0.36, size.height * 0.36),
-      Radius.circular(size.width * 0.12),
-    );
-    paint
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke;
-    canvas.drawRRect(inner, paint);
-  }
-
-  @override
-  bool shouldRepaint(_ActivityZonePainter oldDelegate) =>
-      oldDelegate.color != color;
-}
         int routeMode = 0;
