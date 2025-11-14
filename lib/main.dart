@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -138,8 +139,13 @@ class _HelloScreenState extends State<HelloScreen>
     'Mission Coffee Loop',
     'Beach Boardwalk',
   ];
+  final MapController _mapController = MapController();
   late final AnimationController _navPulseController;
   double _navPulseValue = 0.5;
+  bool _isRouteZoneMode = false;
+  LatLngBounds? _routeZoneBounds;
+  int? _routeZonePointerId;
+  LatLng? _routeZoneStartLatLng;
 
   @override
   void initState() {
@@ -203,11 +209,16 @@ class _HelloScreenState extends State<HelloScreen>
         body: Stack(
           children: [
             FlutterMap(
+              mapController: _mapController,
               options: MapOptions(
                 initialCenter: const LatLng(37.7749, -122.4194), // San Francisco for now
                 initialZoom: 12,
-                interactionOptions: const InteractionOptions(
-                  flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                interactionOptions: InteractionOptions(
+                  flags: _isRouteZoneMode
+                      ? (InteractiveFlag.pinchZoom |
+                          InteractiveFlag.pinchMove |
+                          InteractiveFlag.doubleTapZoom)
+                      : (InteractiveFlag.all & ~InteractiveFlag.rotate),
                 ),
               ),
               children: [
@@ -215,6 +226,17 @@ class _HelloScreenState extends State<HelloScreen>
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.example.route_gen_app',
                 ),
+                if (_routeZoneBounds != null)
+                  PolygonLayer(
+                    polygons: [
+                      Polygon(
+                        points: _routeZonePolygonPoints(_routeZoneBounds!),
+                        color: const Color(0x405C2C92),
+                        borderColor: Colors.white.withOpacity(0.9),
+                        borderStrokeWidth: 2,
+                      ),
+                    ],
+                  ),
               ],
             ),
             Positioned(
@@ -583,6 +605,17 @@ class _HelloScreenState extends State<HelloScreen>
                 ),
               ),
             ),
+            if (_isRouteZoneMode)
+              Positioned.fill(
+                child: Listener(
+                  behavior: HitTestBehavior.opaque,
+                  onPointerDown: _handleRouteZonePointerDown,
+                  onPointerMove: _handleRouteZonePointerMove,
+                  onPointerUp: _handleRouteZonePointerEnd,
+                  onPointerCancel: _handleRouteZonePointerEnd,
+                  child: const _RouteZoneHint(),
+                ),
+              ),
           ],
         ),
         bottomNavigationBar: SafeArea(
@@ -664,6 +697,7 @@ class _HelloScreenState extends State<HelloScreen>
                             return;
                           }
                           if (index == 3) {
+                            _beginRouteZoneSelection();
                             setState(() => _selectedToolIndex = index);
                             return;
                           }
@@ -1570,6 +1604,74 @@ extension on _HelloScreenState {
       stops: const [0.0, 0.5, 1.0],
     );
   }
+
+  List<LatLng> _routeZonePolygonPoints(LatLngBounds bounds) {
+    final northWest = LatLng(bounds.north, bounds.west);
+    final northEast = LatLng(bounds.north, bounds.east);
+    final southEast = LatLng(bounds.south, bounds.east);
+    final southWest = LatLng(bounds.south, bounds.west);
+    return [northWest, northEast, southEast, southWest, northWest];
+  }
+
+  void _beginRouteZoneSelection() {
+    setState(() {
+      _isRouteZoneMode = true;
+      _routeZoneBounds = null;
+      _routeZonePointerId = null;
+      _routeZoneStartLatLng = null;
+    });
+  }
+
+  void _handleRouteZonePointerDown(PointerDownEvent event) {
+    if (!_isRouteZoneMode || _routeZonePointerId != null) return;
+    if (event.kind != PointerDeviceKind.touch) return;
+    final startLatLng = _latLngFromOffset(event.localPosition);
+    if (startLatLng == null) return;
+    setState(() {
+      _routeZonePointerId = event.pointer;
+      _routeZoneStartLatLng = startLatLng;
+      _routeZoneBounds = LatLngBounds.fromPoints([startLatLng, startLatLng]);
+    });
+  }
+
+  void _handleRouteZonePointerMove(PointerMoveEvent event) {
+    if (!_isRouteZoneMode || event.pointer != _routeZonePointerId) return;
+    if (_routeZoneStartLatLng == null) return;
+    final currentLatLng = _latLngFromOffset(event.localPosition);
+    if (currentLatLng == null) return;
+    setState(() {
+      _routeZoneBounds =
+          LatLngBounds.fromPoints([_routeZoneStartLatLng!, currentLatLng]);
+    });
+  }
+
+  void _handleRouteZonePointerEnd(PointerEvent event) {
+    if (event.pointer != _routeZonePointerId) return;
+    final currentLatLng = _latLngFromOffset(event.localPosition);
+    if (_routeZoneStartLatLng == null || currentLatLng == null) {
+      setState(() {
+        _isRouteZoneMode = false;
+        _routeZonePointerId = null;
+        _routeZoneStartLatLng = null;
+      });
+      return;
+    }
+    setState(() {
+      _routeZoneBounds =
+          LatLngBounds.fromPoints([_routeZoneStartLatLng!, currentLatLng]);
+      _isRouteZoneMode = false;
+      _routeZonePointerId = null;
+      _routeZoneStartLatLng = null;
+    });
+  }
+
+  LatLng? _latLngFromOffset(Offset offset) {
+    try {
+      return _mapController.camera.screenOffsetToLatLng(offset);
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 class _TonalSliderCard extends StatefulWidget {
@@ -2453,6 +2555,39 @@ class _MultiToggleTile extends StatelessWidget {
             onChanged: onChanged,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _RouteZoneHint extends StatelessWidget {
+  const _RouteZoneHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: Container(
+          margin: const EdgeInsets.all(20),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.55),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.crop_free, size: 18),
+              SizedBox(width: 10),
+              Text(
+                'Drag to draw a Route Zone',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
