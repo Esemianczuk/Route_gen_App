@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -143,9 +144,16 @@ class _HelloScreenState extends State<HelloScreen>
   late final AnimationController _navPulseController;
   double _navPulseValue = 0.5;
   bool _isRouteZoneMode = false;
+  bool _isRouteZoneEditMode = false;
   LatLngBounds? _routeZoneBounds;
   int? _routeZonePointerId;
   LatLng? _routeZoneStartLatLng;
+  LatLng? _routeZoneOppositeCorner;
+  int? _routeZoneEditPointerId;
+  LatLng? _editDragStartLatLng;
+  LatLngBounds? _editDragStartBounds;
+  _RouteZoneHandle? _activeHandle;
+  StreamSubscription<MapEvent>? _mapEventSubscription;
 
   @override
   void initState() {
@@ -161,12 +169,20 @@ class _HelloScreenState extends State<HelloScreen>
         });
       })
       ..repeat();
+    _mapEventSubscription = _mapController.mapEventStream.listen((event) {
+      if (!mounted) return;
+      if (_routeZoneBounds != null || _isRouteZoneEditMode) {
+        setState(() {});
+      }
+    });
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     _navPulseController.dispose();
+    _mapEventSubscription?.cancel();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -214,7 +230,7 @@ class _HelloScreenState extends State<HelloScreen>
                 initialCenter: const LatLng(37.7749, -122.4194), // San Francisco for now
                 initialZoom: 12,
                 interactionOptions: InteractionOptions(
-                  flags: _isRouteZoneMode
+                  flags: _isRouteZoneMode || _isRouteZoneEditMode
                       ? (InteractiveFlag.pinchZoom |
                           InteractiveFlag.pinchMove |
                           InteractiveFlag.doubleTapZoom)
@@ -614,6 +630,21 @@ class _HelloScreenState extends State<HelloScreen>
                   onPointerUp: _handleRouteZonePointerEnd,
                   onPointerCancel: _handleRouteZonePointerEnd,
                   child: const _RouteZoneHint(),
+                ),
+              ),
+            if (_isRouteZoneEditMode && _routeZoneBounds != null)
+              _buildRouteZoneEditOverlay(),
+            if (_routeZoneBounds != null && !_isRouteZoneMode)
+              Positioned(
+                left: 16,
+                bottom: MediaQuery.of(context).padding.bottom + 96,
+                child: FilledButton.icon(
+                  onPressed:
+                      _isRouteZoneEditMode ? null : _enterRouteZoneEditMode,
+                  icon: const Icon(Icons.edit),
+                  label: Text(
+                    _isRouteZoneEditMode ? 'Editing zone' : 'Edit zone',
+                  ),
                 ),
               ),
           ],
@@ -1605,6 +1636,71 @@ extension on _HelloScreenState {
     );
   }
 
+  Widget _buildRouteZoneEditOverlay() {
+    final handles = _currentHandleOffsets();
+    final saveButton = _buildRouteZoneSaveButton();
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: _handleRouteZoneEditPointerDown,
+            onPointerMove: _handleRouteZoneEditPointerMove,
+            onPointerUp: _handleRouteZoneEditPointerEnd,
+            onPointerCancel: _handleRouteZoneEditPointerEnd,
+            child: const SizedBox.expand(),
+          ),
+          ...handles.entries.map(
+            (entry) => Positioned(
+              left: entry.value.dx - 14,
+              top: entry.value.dy - 14,
+              child: IgnorePointer(
+                child: _RouteZoneHandleDot(active: _activeHandle == entry.key),
+              ),
+            ),
+          ),
+          if (saveButton != null) saveButton,
+        ],
+      ),
+    );
+  }
+
+  Widget? _buildRouteZoneSaveButton() {
+    final bounds = _routeZoneBounds;
+    if (bounds == null) return null;
+    final centerLatLng = LatLng(
+      (bounds.north + bounds.south) / 2,
+      (bounds.east + bounds.west) / 2,
+    );
+    final centerOffset = _offsetFromLatLng(centerLatLng);
+    final button = FilledButton(
+      onPressed: _exitRouteZoneEditMode,
+      child: const Text('Save'),
+    );
+    if (centerOffset == null) {
+      return Align(child: button);
+    }
+    return Positioned(
+      left: centerOffset.dx - 36,
+      top: centerOffset.dy - 20,
+      child: button,
+    );
+  }
+
+  Map<_RouteZoneHandle, Offset> _currentHandleOffsets() {
+    final bounds = _routeZoneBounds;
+    final map = <_RouteZoneHandle, Offset>{};
+    if (bounds == null) return map;
+    for (final handle in _RouteZoneHandle.values) {
+      final latLng = _cornerLatLng(handle, bounds);
+      final offset = _offsetFromLatLng(latLng);
+      if (offset != null) {
+        map[handle] = offset;
+      }
+    }
+    return map;
+  }
+
   List<LatLng> _routeZonePolygonPoints(LatLngBounds bounds) {
     final northWest = LatLng(bounds.north, bounds.west);
     final northEast = LatLng(bounds.north, bounds.east);
@@ -1616,6 +1712,7 @@ extension on _HelloScreenState {
   void _beginRouteZoneSelection() {
     setState(() {
       _isRouteZoneMode = true;
+      _isRouteZoneEditMode = false;
       _routeZoneBounds = null;
       _routeZonePointerId = null;
       _routeZoneStartLatLng = null;
@@ -1671,6 +1768,128 @@ extension on _HelloScreenState {
     } catch (_) {
       return null;
     }
+  }
+
+  Offset? _offsetFromLatLng(LatLng latLng) {
+    try {
+      return _mapController.camera.latLngToScreenOffset(latLng);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _handleRouteZoneEditPointerDown(PointerDownEvent event) {
+    if (!_isRouteZoneEditMode || _routeZoneBounds == null) return;
+    if (_routeZoneEditPointerId != null) return;
+    _routeZoneEditPointerId = event.pointer;
+    final handle = _hitTestHandle(event.localPosition);
+    if (handle != null) {
+      _activeHandle = handle;
+      _routeZoneOppositeCorner =
+          _cornerLatLng(_oppositeHandle(handle), _routeZoneBounds!);
+      _editDragStartLatLng = null;
+      _editDragStartBounds = null;
+    } else {
+      _activeHandle = null;
+      _routeZoneOppositeCorner = null;
+      _editDragStartLatLng = _latLngFromOffset(event.localPosition);
+      _editDragStartBounds = _routeZoneBounds;
+    }
+  }
+
+  void _handleRouteZoneEditPointerMove(PointerMoveEvent event) {
+    if (!_isRouteZoneEditMode || _routeZoneBounds == null) return;
+    if (event.pointer != _routeZoneEditPointerId) return;
+    final currentLatLng = _latLngFromOffset(event.localPosition);
+    if (currentLatLng == null) return;
+    if (_activeHandle != null) {
+      final fixedCorner = _routeZoneOppositeCorner;
+      if (fixedCorner == null) return;
+      setState(() {
+        _routeZoneBounds =
+            LatLngBounds.fromPoints([fixedCorner, currentLatLng]);
+      });
+    } else {
+      final startLatLng = _editDragStartLatLng;
+      final startBounds = _editDragStartBounds;
+      if (startLatLng == null || startBounds == null) return;
+      final dLat = currentLatLng.latitude - startLatLng.latitude;
+      final dLng = currentLatLng.longitude - startLatLng.longitude;
+      setState(() {
+        _routeZoneBounds = LatLngBounds.fromPoints([
+          LatLng(startBounds.south + dLat, startBounds.west + dLng),
+          LatLng(startBounds.north + dLat, startBounds.east + dLng),
+        ]);
+      });
+    }
+  }
+
+  void _handleRouteZoneEditPointerEnd(PointerEvent event) {
+    if (event.pointer != _routeZoneEditPointerId) return;
+    _routeZoneEditPointerId = null;
+    _activeHandle = null;
+    _routeZoneOppositeCorner = null;
+    _editDragStartLatLng = null;
+    _editDragStartBounds = null;
+  }
+
+  _RouteZoneHandle? _hitTestHandle(Offset position) {
+    final handles = _currentHandleOffsets();
+    for (final entry in handles.entries) {
+      if ((entry.value - position).distance <= 28) {
+        return entry.key;
+      }
+    }
+    return null;
+  }
+
+  LatLng _cornerLatLng(_RouteZoneHandle handle, LatLngBounds bounds) {
+    switch (handle) {
+      case _RouteZoneHandle.northWest:
+        return LatLng(bounds.north, bounds.west);
+      case _RouteZoneHandle.northEast:
+        return LatLng(bounds.north, bounds.east);
+      case _RouteZoneHandle.southEast:
+        return LatLng(bounds.south, bounds.east);
+      case _RouteZoneHandle.southWest:
+        return LatLng(bounds.south, bounds.west);
+    }
+  }
+
+  _RouteZoneHandle _oppositeHandle(_RouteZoneHandle handle) {
+    switch (handle) {
+      case _RouteZoneHandle.northWest:
+        return _RouteZoneHandle.southEast;
+      case _RouteZoneHandle.northEast:
+        return _RouteZoneHandle.southWest;
+      case _RouteZoneHandle.southEast:
+        return _RouteZoneHandle.northWest;
+      case _RouteZoneHandle.southWest:
+        return _RouteZoneHandle.northEast;
+    }
+  }
+
+  void _enterRouteZoneEditMode() {
+    if (_routeZoneBounds == null) return;
+    setState(() {
+      _isRouteZoneEditMode = true;
+      _routeZoneEditPointerId = null;
+      _activeHandle = null;
+      _routeZoneOppositeCorner = null;
+      _editDragStartLatLng = null;
+      _editDragStartBounds = null;
+    });
+  }
+
+  void _exitRouteZoneEditMode() {
+    setState(() {
+      _isRouteZoneEditMode = false;
+      _routeZoneEditPointerId = null;
+      _activeHandle = null;
+      _routeZoneOppositeCorner = null;
+      _editDragStartLatLng = null;
+      _editDragStartBounds = null;
+    });
   }
 }
 
@@ -2592,3 +2811,24 @@ class _RouteZoneHint extends StatelessWidget {
     );
   }
 }
+
+class _RouteZoneHandleDot extends StatelessWidget {
+  const _RouteZoneHandleDot({required this.active});
+
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 28,
+      height: 28,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: active ? const Color(0xFF5C2C92) : Colors.black.withOpacity(0.65),
+        border: Border.all(color: Colors.white, width: 2),
+      ),
+    );
+  }
+}
+
+enum _RouteZoneHandle { northWest, northEast, southEast, southWest }
