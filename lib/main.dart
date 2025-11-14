@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -27,30 +30,58 @@ const _clearButtonBase = Color(0xFF8C1D3A);
 const _clearButtonIcon = Color(0xFFFFC3D2);
 const _historyButtonBase = Color(0xFF143555);
 const _historyButtonIcon = Color(0xFFC3D8FF);
-const BorderRadius _chromeBorderRadius = BorderRadius.all(Radius.circular(12));
+const _demoElevationProfile = <double>[
+  0.2,
+  0.32,
+  0.18,
+  0.58,
+  0.44,
+  0.75,
+  0.62,
+  0.86,
+  0.51,
+  0.68,
+  0.42,
+  0.3,
+];
+const BorderRadius _chromeBorderRadius = BorderRadius.all(Radius.circular(18));
 const _chromePanelBg = Color(0xFF0E1726);
 const _chromePanelGradient = LinearGradient(
   begin: Alignment.centerLeft,
   end: Alignment.centerRight,
   colors: [
-    Color(0xA60A101C),
-    Color(0xA60D3450),
-    Color(0xA60A101C),
+    Color(0xC40A101C),
+    Color(0xC40D3450),
+    Color(0xC40A101C),
   ],
   stops: [0.0, 0.5, 1.0],
 );
+const _navEdgeFadeGradient = LinearGradient(
+  begin: Alignment.centerLeft,
+  end: Alignment.centerRight,
+  colors: [
+    Colors.transparent,
+    Colors.white,
+    Colors.white,
+    Colors.transparent,
+  ],
+  stops: [0.0, 0.07, 0.93, 1.0],
+);
 const _elevatedShadow = [
   BoxShadow(
-    color: Color.fromRGBO(0, 0, 0, 0.5),
-    blurRadius: 30,
-    offset: Offset(0, 18),
+    color: Color(0x33000000),
+    blurRadius: 40,
+    spreadRadius: 2,
+    offset: Offset(0, 24),
   ),
   BoxShadow(
-    color: Color.fromRGBO(0, 0, 0, 0.24),
+    color: Color(0x1F000000),
     blurRadius: 12,
-    offset: Offset(0, 6),
+    offset: Offset(0, 8),
   ),
 ];
+const _navEdgeBase = Color(0xFF0A101C);
+const _navCenterBase = Color(0xFF0D3450);
 
 class RouteGenApp extends StatelessWidget {
   const RouteGenApp({super.key});
@@ -87,10 +118,12 @@ class HelloScreen extends StatefulWidget {
   State<HelloScreen> createState() => _HelloScreenState();
 }
 
-class _HelloScreenState extends State<HelloScreen> {
+class _HelloScreenState extends State<HelloScreen>
+    with TickerProviderStateMixin {
   int _selectedToolIndex = 2;
   bool _isBikeMode = true;
   double _preferredMiles = 20;
+  int _routeMode = 0;
   final MenuController _layerMenuController = MenuController();
   final List<String> _layerOptions = const [
     'Leaflet Streets',
@@ -105,10 +138,29 @@ class _HelloScreenState extends State<HelloScreen> {
     'Mission Coffee Loop',
     'Beach Boardwalk',
   ];
+  late final AnimationController _navPulseController;
+  double _navPulseValue = 0.5;
+
+  @override
+  void initState() {
+    super.initState();
+    _navPulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 10),
+    )
+      ..addListener(() {
+        setState(() {
+          final wave = math.sin(_navPulseController.value * 2 * math.pi);
+          _navPulseValue = (wave + 1) / 2;
+        });
+      })
+      ..repeat();
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _navPulseController.dispose();
     super.dispose();
   }
 
@@ -120,6 +172,7 @@ class _HelloScreenState extends State<HelloScreen> {
     final baseTheme = Theme.of(context);
     final accentColor = _isBikeMode ? _bikeAccent : _runAccent;
     final isGenerateSelected = _selectedToolIndex == 2;
+    final navGradient = _navGradientForPulse(_navPulseValue);
     final modeColorScheme = ColorScheme.fromSeed(
       seedColor: accentColor,
       brightness: Brightness.dark,
@@ -490,6 +543,39 @@ class _HelloScreenState extends State<HelloScreen> {
                               ),
                             ),
                           ),
+                          const SizedBox(height: 6),
+                          Tooltip(
+                            message: 'View analytics',
+                            child: _ToolbarButtonFrame(
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(12),
+                                  onTap: _openAnalyticsSheet,
+                                  child: Container(
+                                    key: const ValueKey('stats-button'),
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: accentColor.withValues(alpha: 0.16),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: accentColor.withValues(alpha: 0.35),
+                                        width: 1.2,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: accentColor.withValues(alpha: 0.18),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(Icons.query_stats, size: 18),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -505,83 +591,91 @@ class _HelloScreenState extends State<HelloScreen> {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: DecoratedBox(
               decoration: BoxDecoration(
-                gradient: _chromePanelGradient,
+                gradient: navGradient,
                 borderRadius: _chromeBorderRadius,
                 border: Border.all(
                   color: Colors.white.withValues(alpha: 0.18),
                 ),
                 boxShadow: _elevatedShadow,
               ),
-              child: ClipRRect(
-                borderRadius: _chromeBorderRadius,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: _chromePanelGradient,
-                      borderRadius: _chromeBorderRadius,
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.08),
-                      ),
-                      boxShadow: _elevatedShadow,
-                    ),
-                    child: NavigationBarTheme(
-                      data: NavigationBarThemeData(
-                        height: 66,
-                        indicatorShape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+              child: ShaderMask(
+                shaderCallback: (Rect bounds) =>
+                    _navEdgeFadeGradient.createShader(bounds),
+                blendMode: ui.BlendMode.dstIn,
+                child: ClipRRect(
+                  borderRadius: _chromeBorderRadius,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: navGradient,
+                        borderRadius: _chromeBorderRadius,
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.08),
                         ),
-                        indicatorColor: isGenerateSelected
-                            ? Colors.transparent
-                            : accentColor.withValues(alpha: 0.24),
-                        labelTextStyle: WidgetStateProperty.resolveWith((states) {
-                          final selected = states.contains(WidgetState.selected);
-                          return TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 11,
-                            letterSpacing: 0.2,
-                            color: selected
-                                ? (isGenerateSelected ? Colors.white : accentColor)
-                                : Colors.white.withValues(alpha: 0.8),
-                          );
-                        }),
-                        iconTheme: WidgetStateProperty.resolveWith(
-                          (states) => IconThemeData(
-                            color: states.contains(WidgetState.selected)
-                                ? (isGenerateSelected ? Colors.white : accentColor)
-                                : Colors.white.withValues(alpha: 0.78),
-                            size: 22,
+                        boxShadow: _elevatedShadow,
+                      ),
+                      child: NavigationBarTheme(
+                        data: NavigationBarThemeData(
+                          height: 66,
+                          indicatorShape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          indicatorColor: Colors.transparent,
+                          overlayColor: WidgetStateProperty.resolveWith(
+                            (states) => states.contains(WidgetState.pressed)
+                                ? accentColor.withValues(alpha: 0.18)
+                                : Colors.transparent,
+                          ),
+                          labelTextStyle:
+                              WidgetStateProperty.resolveWith((states) {
+                            final selected = states.contains(WidgetState.selected);
+                            return TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 11,
+                              letterSpacing: 0.2,
+                              color: selected
+                                  ? (isGenerateSelected ? Colors.white : accentColor)
+                                  : Colors.white.withValues(alpha: 0.8),
+                            );
+                          }),
+                          iconTheme: WidgetStateProperty.resolveWith(
+                            (states) => IconThemeData(
+                              color: states.contains(WidgetState.selected)
+                                  ? (isGenerateSelected ? Colors.white : accentColor)
+                                  : Colors.white.withValues(alpha: 0.78),
+                              size: 22,
+                            ),
                           ),
                         ),
-                      ),
-                      child: NavigationBar(
+                        child: NavigationBar(
                         backgroundColor: Colors.transparent,
                         surfaceTintColor: Colors.transparent,
                         elevation: 0,
                         selectedIndex: _selectedToolIndex,
                         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
                         onDestinationSelected: (index) {
+                          if (index == 0) {
+                            _openProfileSheet();
+                            return;
+                          }
                           if (index <= 2) {
                             setState(() => _selectedToolIndex = index);
                             return;
                           }
                           if (index == 3) {
-                            _openProfileSheet();
-                          } else if (index == 4) {
+                            setState(() => _selectedToolIndex = index);
+                            return;
+                          }
+                          if (index == 4) {
                             // TODO: Download action
                           }
                         },
                         destinations: [
-                          NavigationDestination(
-                            icon: _ToolbarAccentIcon(
-                              iconData: Icons.crop_free,
-                              accentColor: accentColor,
-                            ),
-                            selectedIcon: _ToolbarAccentIcon(
-                              iconData: Icons.crop_square,
-                              accentColor: accentColor,
-                            ),
-                            label: 'Route Zone',
+                          const NavigationDestination(
+                            icon: Icon(Icons.tune_outlined),
+                            selectedIcon: Icon(Icons.tune),
+                            label: 'Profile',
                           ),
                           const NavigationDestination(
                             icon: _ToolbarAccentIcon(
@@ -608,9 +702,17 @@ class _HelloScreenState extends State<HelloScreen> {
                             label: 'Generate',
                           ),
                           const NavigationDestination(
-                            icon: Icon(Icons.tune_outlined),
-                            selectedIcon: Icon(Icons.tune),
-                            label: 'Profile',
+                            icon: _ToolbarAccentIcon(
+                              iconData: Icons.crop_free,
+                              accentColor: Color(0xFF5C2C92),
+                              iconColor: Color(0xFFE9D7FF),
+                            ),
+                            selectedIcon: _ToolbarAccentIcon(
+                              iconData: Icons.crop_square,
+                              accentColor: Color(0xFF5C2C92),
+                              iconColor: Color(0xFFE9D7FF),
+                            ),
+                            label: 'Route Zone',
                           ),
                           const NavigationDestination(
                             icon: Icon(Icons.download_outlined),
@@ -618,6 +720,7 @@ class _HelloScreenState extends State<HelloScreen> {
                             label: 'Download',
                           ),
                         ],
+                        ),
                       ),
                     ),
                   ),
@@ -921,13 +1024,16 @@ extension on _HelloScreenState {
                                   icon: Icon(Icons.route),
                                 ),
                               ],
-                              selected: {routeMode},
-                              onSelectionChanged: (value) =>
-                                  setSheetState(() => routeMode = value.first),
+                              selected: {_routeMode},
+                              onSelectionChanged: (value) {
+                                final newMode = value.first;
+                                setSheetState(() => _routeMode = newMode);
+                                setState(() => _routeMode = newMode);
+                              },
                             ),
                           ),
                           const SizedBox(height: 16),
-                          if (routeMode == 1) ...[
+                          if (_routeMode == 1) ...[
                             _MultiRoutePanel(
                               closeLoop: closeLoop,
                               mapAddsStops: mapAddsStops,
@@ -1034,19 +1140,6 @@ extension on _HelloScreenState {
                             ],
                           ),
                           const SizedBox(height: 16),
-                          if (routeMode == 1) ...[
-                            const SizedBox(height: 16),
-                            _MultiRoutePanel(
-                              closeLoop: closeLoop,
-                              mapAddsStops: mapAddsStops,
-                              stopsCount: stopsCount,
-                              onCloseLoopChanged: (value) =>
-                                  setSheetState(() => closeLoop = value),
-                              onMapAddsStopsChanged: (value) =>
-                                  setSheetState(() => mapAddsStops = value),
-                            ),
-                            const SizedBox(height: 16),
-                          ],
                           _DualBiasCard(
                             title: 'Elevation preference',
                             description:
@@ -1372,6 +1465,109 @@ extension on _HelloScreenState {
           },
         );
       },
+    );
+  }
+
+  void _openAnalyticsSheet() {
+    final accentColor = _isBikeMode ? _bikeAccent : _runAccent;
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Container(
+            decoration: BoxDecoration(
+              color: _sherpaBg,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black38,
+                  blurRadius: 28,
+                  offset: Offset(0, 16),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: accentColor.withValues(alpha: 0.16),
+                        child: Icon(Icons.query_stats, color: accentColor),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text(
+                              'Elevation graph',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Preview gradients, peaks, and descents for this route.',
+                              style: TextStyle(fontSize: 13),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  const SizedBox(height: 24),
+                  Container(
+                    height: 160,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      color: _chromePanelBg,
+                      border: Border.all(
+                        color: accentColor.withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'Elevation graph placeholder',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.65),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  LinearGradient _navGradientForPulse(double pulse) {
+    final edgeStart =
+        Color.lerp(_navEdgeBase.withOpacity(0.75), _navEdgeBase.withOpacity(0.4), pulse)!;
+    final center =
+        Color.lerp(_navCenterBase.withOpacity(0.95), _navCenterBase.withOpacity(0.6), pulse)!;
+    return LinearGradient(
+      begin: Alignment.centerLeft,
+      end: Alignment.centerRight,
+      colors: [edgeStart, center, edgeStart],
+      stops: const [0.0, 0.5, 1.0],
     );
   }
 }
@@ -1925,22 +2121,23 @@ class _MultiRoutePanel extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            theme.colorScheme.surface.withValues(alpha: 0.9),
-            theme.colorScheme.surfaceVariant.withValues(alpha: 0.7),
+            Color.fromRGBO(18, 26, 42, 0.92),
+            Color.fromRGBO(20, 28, 44, 0.92),
+            Color.fromRGBO(18, 32, 34, 0.9),
           ],
         ),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
+          color: const Color.fromRGBO(134, 176, 255, 0.26),
         ),
         boxShadow: const [
           BoxShadow(
-            color: Colors.black26,
-            blurRadius: 24,
-            offset: Offset(0, 12),
+            color: Color.fromRGBO(0, 0, 0, 0.42),
+            blurRadius: 40,
+            offset: Offset(0, 18),
           ),
         ],
       ),
@@ -2107,6 +2304,104 @@ class _ToolbarButtonFrame extends StatelessWidget {
   }
 }
 
+class _AnalyticsChip extends StatelessWidget {
+  const _AnalyticsChip({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.35)),
+          color: color.withValues(alpha: 0.08),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11,
+                letterSpacing: 0.4,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ElevationSparklinePainter extends CustomPainter {
+  const _ElevationSparklinePainter(this.points, this.color);
+
+  final List<double> points;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.length < 2) return;
+    final linePath = ui.Path();
+    final dx = size.width / (points.length - 1);
+    for (int i = 0; i < points.length; i++) {
+      final clamped = points[i].clamp(0.0, 1.0);
+      final x = i * dx;
+      final y = size.height - (clamped * (size.height * 0.85));
+      if (i == 0) {
+        linePath.moveTo(x, y);
+      } else {
+        linePath.lineTo(x, y);
+      }
+    }
+    final fillPath = ui.Path.from(linePath)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+
+    final fillPaint = ui.Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          color.withValues(alpha: 0.35),
+          color.withValues(alpha: 0.05),
+        ],
+      ).createShader(Offset.zero & size);
+    canvas.drawPath(fillPath, fillPaint);
+
+    final strokePaint = ui.Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(linePath, strokePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ElevationSparklinePainter oldDelegate) {
+    return oldDelegate.points != points || oldDelegate.color != color;
+  }
+}
+
 class _MultiToggleTile extends StatelessWidget {
   const _MultiToggleTile({
     required this.title,
@@ -2162,5 +2457,3 @@ class _MultiToggleTile extends StatelessWidget {
     );
   }
 }
-
-        int routeMode = 0;
