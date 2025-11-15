@@ -25,6 +25,8 @@ void main() {
 const _sherpaBg = Color(0xFF101218);
 const _bikeAccent = Color(0xFF2BD88D);
 const _runAccent = Color(0xFF5D8EFF);
+const _carAccent = Color(0xFFFFA24B);
+const _utvAccent = Color(0xFFB05CFF);
 const _bikeLabelGlow = Color(0xFFE0FFF4);
 const _runLabelGlow = Color(0xFFDFE6FF);
 const _neonButtonFg = Color(0xFF041C11);
@@ -126,7 +128,7 @@ class HelloScreen extends StatefulWidget {
 class _HelloScreenState extends State<HelloScreen>
     with TickerProviderStateMixin {
   int _selectedToolIndex = 2;
-  bool _isBikeMode = true;
+  int _selectedModeIndex = 0;
   double _preferredMiles = 20;
   int _routeMode = 0;
   static const List<_LayerOption> _layerOptionPresets = [
@@ -198,7 +200,9 @@ class _HelloScreenState extends State<HelloScreen>
   bool _isRouteZoneMode = false;
   bool _isRouteZoneEditMode = false;
   bool _isLayerSheetOpen = false;
-  bool _useMetric = false;
+  bool _isModeSheetOpen = false;
+  int _distanceUnit = 0;
+  int _selectedLanguageIndex = 0;
   int _selectedLayerIndex = 0;
   LatLngBounds? _routeZoneBounds;
   int? _routeZonePointerId;
@@ -223,6 +227,16 @@ class _HelloScreenState extends State<HelloScreen>
   LatLng? _avoidDragStartLatLng;
   LatLngBounds? _avoidDragStartBounds;
   StreamSubscription<MapEvent>? _mapEventSubscription;
+
+  _ModeOption get _activeMode => _modeOptions[_selectedModeIndex];
+  Color get _activeAccentColor => _activeMode.accentColor;
+  _LanguageOption get _activeLanguage =>
+      _languageOptions[_selectedLanguageIndex];
+  String _tr(String key) {
+    final code = _activeLanguage.code;
+    final entry = _localizedStrings[key];
+    return entry?[code] ?? entry?['en'] ?? key;
+  }
 
   @override
   void initState() {
@@ -262,7 +276,7 @@ class _HelloScreenState extends State<HelloScreen>
     final topInset = mediaQuery.padding.top;
     final statusScrimHeight = topInset + 10;
     final baseTheme = Theme.of(context);
-    final accentColor = _isBikeMode ? _bikeAccent : _runAccent;
+    final accentColor = _activeAccentColor;
     final isGenerateSelected = _selectedToolIndex == 2;
     final navGradient = _navGradientForPulse(_navPulseValue);
     final modeColorScheme = ColorScheme.fromSeed(
@@ -417,7 +431,7 @@ class _HelloScreenState extends State<HelloScreen>
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
                               Tooltip(
-                                message: 'Preferred distance',
+                                message: _tr('distance.title'),
                                 child: _ToolbarButtonFrame(
                                   child: _DistanceBadge(
                                     miles: _preferredMiles,
@@ -427,17 +441,13 @@ class _HelloScreenState extends State<HelloScreen>
                               ),
                               const SizedBox(height: 32),
                               Tooltip(
-                                message: _isBikeMode ? 'Switch to running' : 'Switch to biking',
+                                message: _tr('mode.sheet.title'),
                                 child: _ToolbarButtonFrame(
                                   child: Material(
                                     color: Colors.transparent,
                                     child: InkWell(
                                       borderRadius: BorderRadius.circular(12),
-                                      onTap: () {
-                                        setState(() {
-                                          _isBikeMode = !_isBikeMode;
-                                        });
-                                      },
+                                      onTap: _openModeSheet,
                                       child: Container(
                                         key: const ValueKey('mode-toggle-button'),
                                         padding: const EdgeInsets.all(6),
@@ -445,8 +455,10 @@ class _HelloScreenState extends State<HelloScreen>
                                           color: accentColor.withValues(alpha: 0.16),
                                           borderRadius: BorderRadius.circular(12),
                                           border: Border.all(
-                                            color: accentColor.withValues(alpha: 0.35),
-                                            width: 1.2,
+                                            color: _isModeSheetOpen
+                                                ? Colors.white.withValues(alpha: 0.95)
+                                                : accentColor.withValues(alpha: 0.4),
+                                            width: _isModeSheetOpen ? 2.6 : 1.2,
                                           ),
                                           boxShadow: [
                                             BoxShadow(
@@ -457,7 +469,7 @@ class _HelloScreenState extends State<HelloScreen>
                                           ],
                                         ),
                                         child: Icon(
-                                          _isBikeMode ? Icons.directions_bike : Icons.directions_run,
+                                          _activeMode.icon,
                                           size: 18,
                                         ),
                                       ),
@@ -928,23 +940,23 @@ class _HelloScreenState extends State<HelloScreen>
                           }
                         },
                                 destinations: [
-                                  const NavigationDestination(
-                                    icon: Icon(Icons.tune_outlined),
-                                    selectedIcon: Icon(Icons.tune),
-                                    label: 'Profile',
+                                  NavigationDestination(
+                                    icon: const Icon(Icons.tune_outlined),
+                                    selectedIcon: const Icon(Icons.tune),
+                                    label: _tr('nav.profile'),
                                   ),
-                                  const NavigationDestination(
-                                    icon: _ToolbarAccentIcon(
+                                  NavigationDestination(
+                                    icon: const _ToolbarAccentIcon(
                                       iconData: Icons.block_outlined,
                                       accentColor: _clearButtonBase,
                                       iconColor: _clearButtonIcon,
                                     ),
-                                    selectedIcon: _ToolbarAccentIcon(
+                                    selectedIcon: const _ToolbarAccentIcon(
                                       iconData: Icons.block,
                                       accentColor: _clearButtonBase,
                                       iconColor: _clearButtonIcon,
                                     ),
-                                    label: 'Avoid area',
+                                    label: _tr('nav.avoid'),
                                   ),
                                   NavigationDestination(
                                     icon: _ToolbarAccentIcon(
@@ -955,25 +967,25 @@ class _HelloScreenState extends State<HelloScreen>
                                       iconData: Icons.play_arrow,
                                       accentColor: accentColor,
                                     ),
-                                    label: 'Generate',
+                                    label: _tr('nav.generate'),
                                   ),
-                                  const NavigationDestination(
-                                    icon: _ToolbarAccentIcon(
+                                  NavigationDestination(
+                                    icon: const _ToolbarAccentIcon(
                                       iconData: Icons.crop_free,
                                       accentColor: Color(0xFF5C2C92),
                                       iconColor: Color(0xFFE9D7FF),
                                     ),
-                                    selectedIcon: _ToolbarAccentIcon(
+                                    selectedIcon: const _ToolbarAccentIcon(
                                       iconData: Icons.crop_square,
                                       accentColor: Color(0xFF5C2C92),
                                       iconColor: Color(0xFFE9D7FF),
                                     ),
-                                    label: 'Route Zone',
+                                    label: _tr('nav.routeZone'),
                                   ),
-                                  const NavigationDestination(
-                                    icon: Icon(Icons.download_outlined),
-                                    selectedIcon: Icon(Icons.download),
-                                    label: 'Download',
+                                  NavigationDestination(
+                                    icon: const Icon(Icons.download_outlined),
+                                    selectedIcon: const Icon(Icons.download),
+                                    label: _tr('nav.download'),
                                   ),
                                 ],
                               ),
@@ -992,11 +1004,31 @@ class _HelloScreenState extends State<HelloScreen>
 
 extension on _HelloScreenState {
   Future<void> _openDistanceSheet() async {
-    final controller =
-        TextEditingController(text: _preferredMiles.toStringAsFixed(1));
-    double tentativeMiles = _preferredMiles;
+    double _milesFromUnit(double value, int unit) {
+      if (unit == 1) return value / 1.60934;
+      return value;
+    }
+
+    double _unitFromMiles(double miles, int unit) {
+      if (unit == 1) return miles * 1.60934;
+      return miles;
+    }
+
+    String _formatDistance(double value, int unit) {
+      final bool useOneDecimal = unit == 1;
+      final double rounded =
+          useOneDecimal ? double.parse(value.toStringAsFixed(1)) : value;
+      return rounded % 1 == 0
+          ? rounded.toStringAsFixed(0)
+          : rounded.toStringAsFixed(useOneDecimal ? 1 : 1);
+    }
+
+    double tentativeMiles = _unitFromMiles(_preferredMiles, _distanceUnit);
+    final controller = TextEditingController(
+      text: _formatDistance(tentativeMiles, _distanceUnit),
+    );
     String? errorText;
-    final accentColor = _isBikeMode ? _bikeAccent : _runAccent;
+    final accentColor = _activeAccentColor;
     double? resultMiles;
 
     resultMiles = await showModalBottomSheet<double>(
@@ -1006,15 +1038,23 @@ extension on _HelloScreenState {
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
           final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
-          final presets = <String, double>{
-            '5 mi': 5,
-            '10 mi': 10,
-            '13.1 mi': 13.1,
-            '26.2 mi': 26.2,
-          };
+          final List<double> basePresets = [25, 40, 60, 100];
 
           return StatefulBuilder(
             builder: (context, setSheetState) {
+              void _handleUnitTap(int newUnit) {
+                if (_distanceUnit == newUnit) return;
+                final milesValue = _milesFromUnit(tentativeMiles, _distanceUnit);
+                final convertedValue = _unitFromMiles(milesValue, newUnit);
+                setSheetState(() {
+                  tentativeMiles = convertedValue;
+                  controller.text =
+                      _formatDistance(convertedValue, newUnit);
+                  errorText = null;
+                });
+                setState(() => _distanceUnit = newUnit);
+              }
+
               return Container(
                 decoration: BoxDecoration(
                   gradient: _chromePanelGradient,
@@ -1039,18 +1079,16 @@ extension on _HelloScreenState {
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
-                              children: const [
+                              children: [
                                 Text(
-                                  'Preferred distance',
-                                  style: TextStyle(
+                                  _tr('distance.title'),
+                                  style: const TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
-                                SizedBox(height: 4),
-                                Text(
-                                  'Tell us how long you want the route to be.',
-                                ),
+                                const SizedBox(height: 4),
+                                Text(_tr('distance.subtitle')),
                               ],
                             ),
                           ),
@@ -1094,24 +1132,74 @@ extension on _HelloScreenState {
                       Wrap(
                         spacing: 10,
                         runSpacing: 10,
-                        children: presets.entries
-                            .map(
-                              (entry) => ChoiceChip(
-                                label: Text(entry.key),
-                                selected: tentativeMiles == entry.value,
-                                onSelected: (_) {
-                                  setSheetState(() {
-                                    tentativeMiles = entry.value;
-                                    controller.text =
-                                        entry.value % 1 == 0
-                                            ? entry.value.toStringAsFixed(0)
-                                            : entry.value.toStringAsFixed(1);
-                                    errorText = null;
-                                  });
-                                },
-                              ),
-                            )
-                            .toList(),
+                        children: basePresets.map((baseMiles) {
+                          final entryValue =
+                              _unitFromMiles(baseMiles, _distanceUnit);
+                          final unitLabel = _distanceUnit == 0
+                              ? _tr('unit.miShort')
+                              : _distanceUnit == 1
+                                  ? _tr('unit.kmShort')
+                                  : _tr('unit.randomShort');
+                          final label =
+                              '${_formatDistance(entryValue, _distanceUnit)} $unitLabel';
+                          final bool isSelected =
+                              (tentativeMiles - entryValue).abs() < 0.01;
+                          return ChoiceChip(
+                            label: Text(label),
+                            selected: isSelected,
+                            onSelected: (_) {
+                              setSheetState(() {
+                                tentativeMiles = entryValue;
+                                controller.text = _formatDistance(
+                                    tentativeMiles, _distanceUnit);
+                                errorText = null;
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _SettingsUnitChip(
+                              label: _tr('unit.imperial'),
+                              icon: Icons.straighten,
+                              selected: _distanceUnit == 0,
+                              accentColor: accentColor,
+                              onTap: () {
+                                setSheetState(() => _distanceUnit = 0);
+                                setState(() => _distanceUnit = 0);
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _SettingsUnitChip(
+                              label: _tr('unit.metric'),
+                              icon: Icons.speed,
+                              selected: _distanceUnit == 1,
+                              accentColor: accentColor,
+                              onTap: () {
+                                setSheetState(() => _distanceUnit = 1);
+                                setState(() => _distanceUnit = 1);
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _SettingsUnitChip(
+                              label: _tr('unit.random'),
+                              icon: Icons.shuffle,
+                              selected: _distanceUnit == 2,
+                              accentColor: accentColor,
+                              onTap: () {
+                                setSheetState(() => _distanceUnit = 2);
+                                setState(() => _distanceUnit = 2);
+                              },
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 24),
                       Row(
@@ -1119,7 +1207,7 @@ extension on _HelloScreenState {
                         children: [
                           TextButton(
                             onPressed: () => Navigator.of(sheetContext).pop(),
-                            child: const Text('Cancel'),
+                            child: Text(_tr('action.cancel')),
                           ),
                           FilledButton(
                             onPressed: () {
@@ -1133,7 +1221,7 @@ extension on _HelloScreenState {
                               }
                               Navigator.of(sheetContext).pop(parsed);
                             },
-                            child: const Text('Save'),
+                            child: Text(_tr('action.save')),
                           ),
                         ],
                       ),
@@ -1146,7 +1234,8 @@ extension on _HelloScreenState {
         },
       );
     if (!mounted || resultMiles == null) return;
-    setState(() => _preferredMiles = resultMiles!);
+    final storedMiles = _milesFromUnit(resultMiles!, _distanceUnit);
+    setState(() => _preferredMiles = storedMiles);
   }
 
 
@@ -1158,7 +1247,7 @@ extension on _HelloScreenState {
       builder: (sheetContext) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            final accentColor = _isBikeMode ? _bikeAccent : _runAccent;
+            final accentColor = _activeAccentColor;
             return Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               child: Container(
@@ -1188,19 +1277,19 @@ extension on _HelloScreenState {
                             child: const Icon(Icons.settings, color: Colors.white, size: 18),
                           ),
                           const SizedBox(width: 16),
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Settings',
-                                  style: TextStyle(
+                                  _tr('settings.title'),
+                                  style: const TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
-                                SizedBox(height: 4),
-                                Text('Choose units for distance displays.'),
+                                const SizedBox(height: 4),
+                                Text(_tr('settings.unitsSubtitle')),
                               ],
                             ),
                           ),
@@ -1216,30 +1305,64 @@ extension on _HelloScreenState {
                         children: [
                           Expanded(
                             child: _SettingsUnitChip(
-                              label: 'Imperial',
+                              label: _tr('unit.imperial'),
                               icon: Icons.straighten,
-                              selected: !_useMetric,
+                              selected: _distanceUnit == 0,
                               accentColor: accentColor,
                               onTap: () {
-                                setSheetState(() => _useMetric = false);
-                                setState(() => _useMetric = false);
+                                setSheetState(() => _distanceUnit = 0);
+                                setState(() => _distanceUnit = 0);
                               },
                             ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: _SettingsUnitChip(
-                              label: 'Metric',
+                              label: _tr('unit.metric'),
                               icon: Icons.speed,
-                              selected: _useMetric,
+                              selected: _distanceUnit == 1,
                               accentColor: accentColor,
                               onTap: () {
-                                setSheetState(() => _useMetric = true);
-                                setState(() => _useMetric = true);
+                                setSheetState(() => _distanceUnit = 1);
+                                setState(() => _distanceUnit = 1);
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _SettingsUnitChip(
+                              label: _tr('unit.random'),
+                              icon: Icons.shuffle,
+                              selected: _distanceUnit == 2,
+                              accentColor: accentColor,
+                              onTap: () {
+                                setSheetState(() => _distanceUnit = 2);
+                                setState(() => _distanceUnit = 2);
                               },
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        _tr('settings.language'),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _SettingsUnitChip(
+                        label:
+                            '${_tr('settings.language')}: ${_activeLanguage.label}',
+                        icon: Icons.translate,
+                        selected: true,
+                        emphasize: true,
+                        accentColor: accentColor,
+                        onTap: () async {
+                          await _openLanguageDialog();
+                          setSheetState(() {});
+                        },
                       ),
                     ],
                   ),
@@ -1331,38 +1454,38 @@ extension on _HelloScreenState {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.white.withValues(alpha: 0.08),
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.12),
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withValues(alpha: 0.08),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.12),
+                              ),
+                            ),
+                            child: const Icon(Icons.layers, color: Colors.white, size: 18),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _tr('map.sheet.title'),
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
-                              ),
-                              child: const Icon(Icons.layers, color: Colors.white, size: 18),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _tr('map.sheet.subtitle'),
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 16),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Choose map style',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    'Switch between satellite, contour, and minimalist looks.',
-                                    style: TextStyle(fontSize: 13),
-                                  ),
-                                ],
-                              ),
-                            ),
+                          ),
                             IconButton(
                               tooltip: 'Close',
                               onPressed: () => Navigator.of(sheetContext).pop(),
@@ -1409,8 +1532,180 @@ extension on _HelloScreenState {
     setState(() => _isLayerSheetOpen = false);
   }
 
+  Future<void> _openLanguageDialog() async {
+    final result = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          contentPadding: EdgeInsets.zero,
+          content: Container(
+            decoration: BoxDecoration(
+              gradient: _chromePanelGradient,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+              boxShadow: _elevatedShadow,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        _tr('settings.language'),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: _tr('action.cancel'),
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.maxFinite,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: _languageOptions.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final option = entry.value;
+                        return RadioListTile<int>(
+                          value: index,
+                          groupValue: _selectedLanguageIndex,
+                          title: Text(option.label),
+                          onChanged: (value) {
+                            Navigator.of(dialogContext).pop(value);
+                          },
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    if (result == null) return;
+    setState(() => _selectedLanguageIndex = result);
+  }
+
+  Future<void> _openModeSheet() async {
+    if (_isModeSheetOpen) return;
+    setState(() => _isModeSheetOpen = true);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      useSafeArea: true,
+      barrierColor: Colors.black.withOpacity(0.65),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: _chromePanelGradient,
+                  borderRadius: BorderRadius.circular(32),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                  boxShadow: _elevatedShadow,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withValues(alpha: 0.08),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.12),
+                              ),
+                            ),
+                            child:
+                                const Icon(Icons.bolt, color: Colors.white, size: 18),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _tr('mode.sheet.title'),
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _tr('mode.sheet.subtitle'),
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Close',
+                            onPressed: () => Navigator.of(sheetContext).pop(),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      ...List.generate(
+                        _modeOptions.length,
+                        (index) {
+                          final option = _modeOptions[index];
+                          final selected = index == _selectedModeIndex;
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(28),
+                                onTap: () {
+                                  setState(() => _selectedModeIndex = index);
+                                  setSheetState(() {});
+                                },
+                                child: _ModeOptionTile(
+                                  option: option,
+                                  selected: selected,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (!mounted) return;
+    setState(() => _isModeSheetOpen = false);
+  }
+
   void _openProfileSheet() {
-    final accentColor = _isBikeMode ? _bikeAccent : _runAccent;
+    final accentColor = _activeAccentColor;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -1486,7 +1781,7 @@ extension on _HelloScreenState {
                             children: [
                               Expanded(
                                 child: _SettingsUnitChip(
-                                  label: 'Loop mode',
+                                  label: _tr('route.loop'),
                                   icon: Icons.loop,
                                   selected: _routeMode == 0,
                                   accentColor: accentColor,
@@ -1499,7 +1794,7 @@ extension on _HelloScreenState {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: _SettingsUnitChip(
-                                  label: 'Multi-point',
+                                  label: _tr('route.multi'),
                                   icon: Icons.route,
                                   selected: _routeMode == 1,
                                   accentColor: accentColor,
@@ -1569,7 +1864,7 @@ extension on _HelloScreenState {
                             children: [
                               Expanded(
                                 child: _SettingsUnitChip(
-                                  label: 'Save profile',
+                                  label: _tr('profile.save'),
                                   icon: Icons.star_border,
                                   selected: true,
                                   accentColor: accentColor,
@@ -1580,8 +1875,13 @@ extension on _HelloScreenState {
                               ),
                               const SizedBox(width: 12),
                               Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: () => showModalBottomSheet<void>(
+                                child: _SettingsUnitChip(
+                                  label: _tr('profile.manage'),
+                                  icon: Icons.folder_shared_outlined,
+                                  selected: false,
+                                  accentColor: _routeZoneAccent,
+                                  emphasize: true,
+                                  onTap: () => showModalBottomSheet<void>(
                                     context: sheetContext,
                                     useSafeArea: true,
                                     builder: (ctx) => SizedBox(
@@ -1591,7 +1891,7 @@ extension on _HelloScreenState {
                                             CrossAxisAlignment.start,
                                         children: [
                                           ListTile(
-                                            title: const Text('Profiles'),
+                                            title: Text(_tr('profile.manage')),
                                             trailing: IconButton(
                                               icon: const Icon(Icons.close),
                                               onPressed: () =>
@@ -1601,7 +1901,7 @@ extension on _HelloScreenState {
                                           Expanded(
                                             child: Center(
                                               child: Text(
-                                                'No saved profiles yet.',
+                                                _tr('profile.none'),
                                                 style: Theme.of(ctx)
                                                     .textTheme
                                                     .bodyMedium,
@@ -1612,8 +1912,6 @@ extension on _HelloScreenState {
                                       ),
                                     ),
                                   ),
-                                  icon: const Icon(Icons.folder_shared_outlined),
-                                  label: const Text('Profiles'),
                                 ),
                               ),
                             ],
@@ -1948,7 +2246,7 @@ extension on _HelloScreenState {
   }
 
   void _openAnalyticsSheet() {
-    final accentColor = _isBikeMode ? _bikeAccent : _runAccent;
+    final accentColor = _activeAccentColor;
     showModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
@@ -2012,7 +2310,7 @@ extension on _HelloScreenState {
                   Container(
                     height: 160,
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: _chromeBorderRadius,
                       color: _chromePanelBg,
                       border: Border.all(
                         color: accentColor.withValues(alpha: 0.2),
@@ -2085,7 +2383,7 @@ extension on _HelloScreenState {
 
   Widget? _buildRouteZoneSaveButton() {
     if (_routeZoneBounds == null) return null;
-    final accentColor = _isBikeMode ? _bikeAccent : _runAccent;
+    final accentColor = _activeAccentColor;
     final iconColor = Colors.white;
     return _ToolbarButtonFrame(
       child: Material(
@@ -2403,7 +2701,7 @@ extension on _HelloScreenState {
     final centerOffset = _offsetFromLatLng(centerLatLng);
     final isActive = _isAvoidAreaMode && _activeAvoidZoneId == zone.id;
     final showLabels = isActive;
-    final accentColor = _isBikeMode ? _bikeAccent : _runAccent;
+    final accentColor = _activeAccentColor;
     final editButton = _buildZoneActionButton(
       color: isActive ? accentColor : _clearButtonBase,
       iconColor: isActive ? Colors.white : _clearButtonIcon,
@@ -2462,7 +2760,7 @@ extension on _HelloScreenState {
         _removeAvoidZone(zone.id);
       },
     );
-    final accentColor = _isBikeMode ? _bikeAccent : _runAccent;
+    final accentColor = _activeAccentColor;
     final editButton = _buildGenerateAccentIconButton(
       accentColor: accentColor,
       icon: Icons.edit,
@@ -3756,18 +4054,17 @@ class _ToolbarButtonFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const borderRadius = BorderRadius.all(Radius.circular(12));
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: _chromePanelGradient,
-        borderRadius: borderRadius,
+        borderRadius: _chromeBorderRadius,
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.08),
         ),
         boxShadow: _elevatedShadow,
       ),
       child: ClipRRect(
-        borderRadius: borderRadius,
+        borderRadius: _chromeBorderRadius,
         child: child,
       ),
     );
@@ -3914,6 +4211,419 @@ class _LayerOptionTile extends StatelessWidget {
   }
 }
 
+class _ModeOption {
+  const _ModeOption({
+    required this.label,
+    required this.subtitle,
+    required this.icon,
+    required this.accentColor,
+    required this.background,
+  });
+
+  final String label;
+  final String subtitle;
+  final IconData icon;
+  final Color accentColor;
+  final List<Color> background;
+}
+
+const List<_ModeOption> _modeOptions = [
+  _ModeOption(
+    label: 'Cycling',
+    subtitle: 'Road + gravel ready',
+    icon: Icons.directions_bike,
+    accentColor: _bikeAccent,
+    background: [
+      Color(0xFF0A1F16),
+      Color(0xFF153527),
+    ],
+  ),
+  _ModeOption(
+    label: 'Biking',
+    subtitle: 'Trail / downhill mix',
+    icon: Icons.two_wheeler,
+    accentColor: _runAccent,
+    background: [
+      Color(0xFF091526),
+      Color(0xFF14294A),
+    ],
+  ),
+  _ModeOption(
+    label: 'Car',
+    subtitle: 'Scenic drive loops',
+    icon: Icons.directions_car,
+    accentColor: _carAccent,
+    background: [
+      Color(0xFF2B160A),
+      Color(0xFF472311),
+    ],
+  ),
+  _ModeOption(
+    label: 'UTV',
+    subtitle: 'Off-road exploration',
+    icon: Icons.sports_motorsports,
+    accentColor: _utvAccent,
+    background: [
+      Color(0xFF1E0D29),
+      Color(0xFF31113F),
+    ],
+  ),
+];
+
+class _LanguageOption {
+  const _LanguageOption({required this.label, required this.code});
+
+  final String label;
+  final String code;
+}
+
+const List<_LanguageOption> _languageOptions = [
+  _LanguageOption(label: 'English', code: 'en'),
+  _LanguageOption(label: 'Espanol', code: 'es'),
+  _LanguageOption(label: 'Francais', code: 'fr'),
+  _LanguageOption(label: 'Deutsch', code: 'de'),
+  _LanguageOption(label: 'Italiano', code: 'it'),
+];
+
+const Map<String, Map<String, String>> _localizedStrings = {
+  'nav.profile': {
+    'en': 'Profile',
+    'es': 'Perfil',
+    'fr': 'Profil',
+    'de': 'Profil',
+    'it': 'Profilo'
+  },
+  'nav.avoid': {
+    'en': 'Avoid area',
+    'es': 'Evitar zona',
+    'fr': 'Zone a eviter',
+    'de': 'Zone meiden',
+    'it': 'Evita area'
+  },
+  'nav.generate': {
+    'en': 'Generate',
+    'es': 'Generar',
+    'fr': 'Generer',
+    'de': 'Generieren',
+    'it': 'Genera'
+  },
+  'nav.routeZone': {
+    'en': 'Route Zone',
+    'es': 'Zona de ruta',
+    'fr': 'Zone de route',
+    'de': 'Routenzone',
+    'it': 'Zona percorso'
+  },
+  'nav.download': {
+    'en': 'Download',
+    'es': 'Descargar',
+    'fr': 'Telecharger',
+    'de': 'Herunterladen',
+    'it': 'Scarica'
+  },
+  'distance.title': {
+    'en': 'Preferred distance',
+    'es': 'Distancia preferida',
+    'fr': 'Distance preferee',
+    'de': 'Bevorzugte Distanz',
+    'it': 'Distanza preferita'
+  },
+  'distance.subtitle': {
+    'en': 'Tell us how long you want the route to be.',
+    'es': 'Indica cuan larga quieres la ruta.',
+    'fr': 'Indiquez la longueur souhaitee de la route.',
+    'de': 'Sag uns wie lang die Route sein soll.',
+    'it': 'Dicci quanto lungo vuoi il percorso.'
+  },
+  'settings.unitsSubtitle': {
+    'en': 'Choose units for distance displays.',
+    'es': 'Elige unidades para las distancias.',
+    'fr': 'Choisissez les unites pour les distances.',
+    'de': 'Wahle Einheiten fur die Distanz.',
+    'it': 'Scegli le unita per le distanze.'
+  },
+  'settings.title': {
+    'en': 'Settings',
+    'es': 'Configuracion',
+    'fr': 'Parametres',
+    'de': 'Einstellungen',
+    'it': 'Impostazioni'
+  },
+  'settings.language': {
+    'en': 'Language',
+    'es': 'Idioma',
+    'fr': 'Langue',
+    'de': 'Sprache',
+    'it': 'Lingua'
+  },
+  'unit.imperial': {
+    'en': 'Imperial',
+    'es': 'Imperial',
+    'fr': 'Imperial',
+    'de': 'Imperial',
+    'it': 'Imperiale'
+  },
+  'unit.metric': {
+    'en': 'Metric',
+    'es': 'Metrico',
+    'fr': 'Metrique',
+    'de': 'Metrisch',
+    'it': 'Metrico'
+  },
+  'unit.random': {
+    'en': 'Random',
+    'es': 'Aleatorio',
+    'fr': 'Aleatoire',
+    'de': 'Zufall',
+    'it': 'Casuale'
+  },
+  'unit.miShort': {
+    'en': 'mi',
+    'es': 'mi',
+    'fr': 'mi',
+    'de': 'mi',
+    'it': 'mi'
+  },
+  'unit.kmShort': {
+    'en': 'km',
+    'es': 'km',
+    'fr': 'km',
+    'de': 'km',
+    'it': 'km'
+  },
+  'unit.randomShort': {
+    'en': 'rnd',
+    'es': 'ale',
+    'fr': 'ale',
+    'de': 'zuf',
+    'it': 'cas'
+  },
+  'action.cancel': {
+    'en': 'Cancel',
+    'es': 'Cancelar',
+    'fr': 'Annuler',
+    'de': 'Abbrechen',
+    'it': 'Annulla'
+  },
+  'action.save': {
+    'en': 'Save',
+    'es': 'Guardar',
+    'fr': 'Enregistrer',
+    'de': 'Speichern',
+    'it': 'Salva'
+  },
+  'route.loop': {
+    'en': 'Loop mode',
+    'es': 'Modo bucle',
+    'fr': 'Mode boucle',
+    'de': 'Rundkurs',
+    'it': 'Modalita loop'
+  },
+  'route.multi': {
+    'en': 'Multi-point',
+    'es': 'Multi-punto',
+    'fr': 'Multi-points',
+    'de': 'Mehrpunkt',
+    'it': 'Multi-punto'
+  },
+  'profile.save': {
+    'en': 'Save profile',
+    'es': 'Guardar perfil',
+    'fr': 'Enregistrer le profil',
+    'de': 'Profil speichern',
+    'it': 'Salva profilo'
+  },
+  'profile.manage': {
+    'en': 'Profiles',
+    'es': 'Perfiles',
+    'fr': 'Profils',
+    'de': 'Profile',
+    'it': 'Profili'
+  },
+  'profile.none': {
+    'en': 'No saved profiles yet.',
+    'es': 'Aun no hay perfiles guardados.',
+    'fr': 'Aucun profil enregistre.',
+    'de': 'Noch keine Profile gespeichert.',
+    'it': 'Nessun profilo salvato.'
+  },
+  'mode.sheet.title': {
+    'en': 'Choose activity',
+    'es': 'Elige actividad',
+    'fr': 'Choisir une activite',
+    'de': 'Aktivitat wahlen',
+    'it': 'Scegli attivita'
+  },
+  'mode.sheet.subtitle': {
+    'en': 'Switch between ride, drive, or off-road experiences.',
+    'es': 'Alterna entre paseo, conduccion o todoterreno.',
+    'fr': 'Alternez entre route, conduite ou hors route.',
+    'de': 'Wechsle zwischen Fahrt, Auto oder Offroad.',
+    'it': 'Passa tra bici, auto o fuoristrada.'
+  },
+  'map.sheet.title': {
+    'en': 'Choose map style',
+    'es': 'Elige estilo de mapa',
+    'fr': 'Choisir un style de carte',
+    'de': 'Kartenstil wahlen',
+    'it': 'Scegli stile mappa'
+  },
+  'map.sheet.subtitle': {
+    'en': 'Switch between satellite, contour, and minimalist looks.',
+    'es': 'Alterna entre satelite, contorno y minimalista.',
+    'fr': 'Basculez entre satellite, contour et minimaliste.',
+    'de': 'Wechsle zwischen Satellit, Kontur und Minimalismus.',
+    'it': 'Alterna tra satellite, contorno e minimale.'
+  },
+};
+
+
+class _ModeOptionTile extends StatelessWidget {
+  const _ModeOptionTile({required this.option, required this.selected});
+
+  final _ModeOption option;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final gradient = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: option.background,
+    );
+    final textColor = Colors.white.withValues(alpha: 0.92);
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      decoration: BoxDecoration(
+        gradient: gradient,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: selected
+              ? option.accentColor.withValues(alpha: 0.9)
+              : Colors.white.withValues(alpha: 0.08),
+          width: 1.4,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: option.accentColor.withValues(alpha: selected ? 0.35 : 0.2),
+            blurRadius: selected ? 28 : 18,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.black.withValues(alpha: 0.2),
+              border: Border.all(
+                color: option.accentColor.withValues(alpha: 0.6),
+                width: 1.4,
+              ),
+            ),
+            child: Icon(option.icon, color: option.accentColor, size: 22),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  option.label,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: textColor,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  option.subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white.withValues(alpha: 0.7),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: selected
+                ? Container(
+                    key: const ValueKey('mode-active-indicator'),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: option.accentColor.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(40),
+                      border: Border.all(
+                        color: option.accentColor.withValues(alpha: 0.9),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.check,
+                            size: 14, color: Colors.black.withOpacity(0.8)),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Active',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black.withOpacity(0.85),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : Icon(Icons.arrow_outward,
+                    key: const ValueKey('mode-inactive-indicator'),
+                    size: 18,
+                    color: Colors.white.withValues(alpha: 0.65)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdaptiveText extends StatelessWidget {
+  const _AdaptiveText(
+    this.text, {
+    this.style,
+    this.maxLines = 1,
+    this.alignment = Alignment.centerLeft,
+  });
+
+  final String text;
+  final TextStyle? style;
+  final int maxLines;
+  final Alignment alignment;
+
+  @override
+  Widget build(BuildContext context) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: alignment,
+      child: Text(
+        text,
+        style: style,
+        maxLines: maxLines,
+        overflow: TextOverflow.ellipsis,
+        softWrap: false,
+      ),
+    );
+  }
+}
+
 class _SettingsUnitChip extends StatelessWidget {
   const _SettingsUnitChip({
     required this.label,
@@ -3921,6 +4631,7 @@ class _SettingsUnitChip extends StatelessWidget {
     required this.selected,
     required this.accentColor,
     required this.onTap,
+    this.emphasize = false,
   });
 
   final String label;
@@ -3928,27 +4639,29 @@ class _SettingsUnitChip extends StatelessWidget {
   final bool selected;
   final Color accentColor;
   final VoidCallback onTap;
+  final bool emphasize;
 
   @override
   Widget build(BuildContext context) {
-    final Color fillColor = selected
+    final bool highlight = selected || emphasize;
+    final Color fillColor = highlight
         ? accentColor.withValues(alpha: 0.16)
         : Colors.white.withValues(alpha: 0.06);
-    final Color borderColor = selected
+    final Color borderColor = highlight
         ? accentColor.withValues(alpha: 0.4)
         : Colors.white.withValues(alpha: 0.18);
-    final Color iconColor = selected ? Colors.white : Colors.white70;
+    final Color iconColor = highlight ? Colors.white : Colors.white70;
     return _ToolbarButtonFrame(
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: _chromeBorderRadius,
           onTap: onTap,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: fillColor,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: _chromeBorderRadius,
               border: Border.all(color: borderColor, width: 1.2),
               boxShadow: [
                 BoxShadow(
@@ -3962,15 +4675,18 @@ class _SettingsUnitChip extends StatelessWidget {
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, size: 16, color: iconColor),
-                const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: iconColor,
+                Icon(icon, size: 14, color: iconColor),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: _AdaptiveText(
+                    label,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: iconColor,
+                      fontSize: 11,
+                    ),
+                    alignment: Alignment.centerLeft,
                   ),
                 ),
               ],
