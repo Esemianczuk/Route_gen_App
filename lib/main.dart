@@ -198,6 +198,7 @@ class _HelloScreenState extends State<HelloScreen>
   bool _isRouteZoneMode = false;
   bool _isRouteZoneEditMode = false;
   bool _isLayerSheetOpen = false;
+  bool _useMetric = false;
   int _selectedLayerIndex = 0;
   LatLngBounds? _routeZoneBounds;
   int? _routeZonePointerId;
@@ -665,9 +666,7 @@ class _HelloScreenState extends State<HelloScreen>
                                     color: Colors.transparent,
                                     child: InkWell(
                                       borderRadius: BorderRadius.circular(12),
-                                      onTap: () {
-                                        // TODO: open toolbar settings
-                                      },
+                                      onTap: _openSettingsSheet,
                                       child: Container(
                                         key: const ValueKey('settings-button'),
                                         padding: const EdgeInsets.all(6),
@@ -1002,12 +1001,10 @@ extension on _HelloScreenState {
 
     resultMiles = await showModalBottomSheet<double>(
       context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        ),
-        builder: (sheetContext) {
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
           final bottomInset = MediaQuery.of(sheetContext).viewInsets.bottom;
           final presets = <String, double>{
             '5 mi': 5,
@@ -1018,43 +1015,52 @@ extension on _HelloScreenState {
 
           return StatefulBuilder(
             builder: (context, setSheetState) {
-              return SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(24, 24, 24, bottomInset + 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        CircleAvatar(
-                          backgroundColor: accentColor.withValues(alpha: 0.15),
-                          child: Icon(Icons.straighten, color: accentColor),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
-                              Text(
-                                'Preferred distance',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                'Tell us how long you want the route to be.',
-                              ),
-                            ],
+              return Container(
+                decoration: BoxDecoration(
+                  gradient: _chromePanelGradient,
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(32)),
+                  border:
+                      Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                  boxShadow: _elevatedShadow,
+                ),
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(24, 24, 24, bottomInset + 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor: accentColor.withValues(alpha: 0.15),
+                            child: Icon(Icons.straighten, color: accentColor),
                           ),
-                        ),
-                        IconButton(
-                          tooltip: 'Close',
-                          onPressed: () => Navigator.of(sheetContext).pop(),
-                          icon: const Icon(Icons.close),
-                        ),
-                      ],
-                    ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: const [
+                                Text(
+                                  'Preferred distance',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  'Tell us how long you want the route to be.',
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Close',
+                            onPressed: () => Navigator.of(sheetContext).pop(),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
                     const SizedBox(height: 20),
                     TextField(
                       controller: controller,
@@ -1084,53 +1090,55 @@ extension on _HelloScreenState {
                         });
                       },
                     ),
-                    const SizedBox(height: 16),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: presets.entries
-                          .map(
-                            (entry) => ChoiceChip(
-                              label: Text(entry.key),
-                              selected: tentativeMiles == entry.value,
-                              onSelected: (_) {
-                                setSheetState(() {
-                                  tentativeMiles = entry.value;
-                                  controller.text = entry.value % 1 == 0
-                                      ? entry.value.toStringAsFixed(0)
-                                      : entry.value.toStringAsFixed(1);
-                                  errorText = null;
-                                });
-                              },
-                            ),
-                          )
-                          .toList(),
-                    ),
-                    const SizedBox(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        TextButton(
-                          onPressed: () => Navigator.of(sheetContext).pop(),
-                          child: const Text('Cancel'),
-                        ),
-                        FilledButton(
-                          onPressed: () {
-                            final parsed =
-                                double.tryParse(controller.text.trim());
-                            if (parsed == null || parsed <= 0) {
-                              setSheetState(
-                                () => errorText = 'Enter a positive distance',
-                              );
-                              return;
-                            }
-                            Navigator.of(sheetContext).pop(parsed);
-                          },
-                          child: const Text('Save'),
-                        ),
-                      ],
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: presets.entries
+                            .map(
+                              (entry) => ChoiceChip(
+                                label: Text(entry.key),
+                                selected: tentativeMiles == entry.value,
+                                onSelected: (_) {
+                                  setSheetState(() {
+                                    tentativeMiles = entry.value;
+                                    controller.text =
+                                        entry.value % 1 == 0
+                                            ? entry.value.toStringAsFixed(0)
+                                            : entry.value.toStringAsFixed(1);
+                                    errorText = null;
+                                  });
+                                },
+                              ),
+                            )
+                            .toList(),
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.of(sheetContext).pop(),
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            onPressed: () {
+                              final parsed =
+                                  double.tryParse(controller.text.trim());
+                              if (parsed == null || parsed <= 0) {
+                                setSheetState(
+                                  () => errorText = 'Enter a positive distance',
+                                );
+                                return;
+                              }
+                              Navigator.of(sheetContext).pop(parsed);
+                            },
+                            child: const Text('Save'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               );
             },
@@ -1139,6 +1147,109 @@ extension on _HelloScreenState {
       );
     if (!mounted || resultMiles == null) return;
     setState(() => _preferredMiles = resultMiles!);
+  }
+
+
+  Future<void> _openSettingsSheet() async {
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final accentColor = _isBikeMode ? _bikeAccent : _runAccent;
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: _chromePanelGradient,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                  boxShadow: _elevatedShadow,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withValues(alpha: 0.08),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.12),
+                              ),
+                            ),
+                            child: const Icon(Icons.settings, color: Colors.white, size: 18),
+                          ),
+                          const SizedBox(width: 16),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Settings',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                SizedBox(height: 4),
+                                Text('Choose units for distance displays.'),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Close',
+                            onPressed: () => Navigator.of(sheetContext).pop(),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _SettingsUnitChip(
+                              label: 'Imperial',
+                              icon: Icons.straighten,
+                              selected: !_useMetric,
+                              accentColor: accentColor,
+                              onTap: () {
+                                setSheetState(() => _useMetric = false);
+                                setState(() => _useMetric = false);
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _SettingsUnitChip(
+                              label: 'Metric',
+                              icon: Icons.speed,
+                              selected: _useMetric,
+                              accentColor: accentColor,
+                              onTap: () {
+                                setSheetState(() => _useMetric = true);
+                                setState(() => _useMetric = true);
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   void _openSearchSheet() {
@@ -1370,30 +1481,38 @@ extension on _HelloScreenState {
                               ),
                             ),
                           ),
-                          const SizedBox(height: 16),
-                          Center(
-                            child: SegmentedButton<int>(
-                              segments: const [
-                                ButtonSegment(
-                                  value: 0,
-                                  label: Text('Loop mode'),
-                                  icon: Icon(Icons.loop),
+                          const SizedBox(height: 20),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _SettingsUnitChip(
+                                  label: 'Loop mode',
+                                  icon: Icons.loop,
+                                  selected: _routeMode == 0,
+                                  accentColor: accentColor,
+                                  onTap: () {
+                                    setSheetState(() => _routeMode = 0);
+                                    setState(() => _routeMode = 0);
+                                  },
                                 ),
-                                ButtonSegment(
-                                  value: 1,
-                                  label: Text('Multi-point mode'),
-                                  icon: Icon(Icons.route),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _SettingsUnitChip(
+                                  label: 'Multi-point',
+                                  icon: Icons.route,
+                                  selected: _routeMode == 1,
+                                  accentColor: accentColor,
+                                  onTap: () {
+                                    setSheetState(() => _routeMode = 1);
+                                    setState(() => _routeMode = 1);
+                                  },
                                 ),
-                              ],
-                              selected: {_routeMode},
-                              onSelectionChanged: (value) {
-                                final newMode = value.first;
-                                setSheetState(() => _routeMode = newMode);
-                                setState(() => _routeMode = newMode);
-                              },
-                            ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 20),
+                          const SizedBox(height: 24),
                           if (_routeMode == 1) ...[
                             _MultiRoutePanel(
                               closeLoop: closeLoop,
@@ -1404,47 +1523,44 @@ extension on _HelloScreenState {
                               onMapAddsStopsChanged: (value) =>
                                   setSheetState(() => mapAddsStops = value),
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 20),
                           ],
                           Row(
                             children: [
-                              CircleAvatar(
-                                radius: 24,
-                                backgroundColor:
-                                    sheetTheme.colorScheme.primaryContainer,
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white.withValues(alpha: 0.08),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.1),
+                                  ),
+                                ),
                                 child: Icon(
                                   Icons.tune,
                                   color: sheetTheme.colorScheme.primary,
                                 ),
                               ),
                               const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'Route tuning',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Route tuning',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
                                     ),
-                                    Text(
-                                      'Core weights, tune how the route feels. Hover info icons for tips.',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: sheetTheme
-                                            .colorScheme.onSurfaceVariant,
-                                      ),
+                                  ),
+                                  Text(
+                                    'Balance weights and biases to sculpt the ride.',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: sheetTheme
+                                          .colorScheme.onSurfaceVariant,
                                     ),
-                                  ],
-                                ),
-                              ),
-                              IconButton(
-                                tooltip: 'Close',
-                                onPressed: () =>
-                                    Navigator.of(sheetContext).pop(),
-                                icon: const Icon(Icons.close),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -1452,12 +1568,14 @@ extension on _HelloScreenState {
                           Row(
                             children: [
                               Expanded(
-                                child: FilledButton.icon(
-                                  onPressed: () {
+                                child: _SettingsUnitChip(
+                                  label: 'Save profile',
+                                  icon: Icons.star_border,
+                                  selected: true,
+                                  accentColor: accentColor,
+                                  onTap: () {
                                     // TODO: persist profile
                                   },
-                                  icon: const Icon(Icons.star_outline),
-                                  label: const Text('Save profile'),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -3791,6 +3909,74 @@ class _LayerOptionTile extends StatelessWidget {
                     color: Colors.white.withValues(alpha: 0.65)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SettingsUnitChip extends StatelessWidget {
+  const _SettingsUnitChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.accentColor,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final Color accentColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color fillColor = selected
+        ? accentColor.withValues(alpha: 0.16)
+        : Colors.white.withValues(alpha: 0.06);
+    final Color borderColor = selected
+        ? accentColor.withValues(alpha: 0.4)
+        : Colors.white.withValues(alpha: 0.18);
+    final Color iconColor = selected ? Colors.white : Colors.white70;
+    return _ToolbarButtonFrame(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: fillColor,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: borderColor, width: 1.2),
+              boxShadow: [
+                BoxShadow(
+                  color: selected
+                      ? accentColor.withValues(alpha: 0.18)
+                      : Colors.black.withOpacity(0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: iconColor),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: iconColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
