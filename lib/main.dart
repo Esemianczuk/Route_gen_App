@@ -1347,16 +1347,11 @@ extension on _HelloScreenState {
                   data: sheetTheme,
                   child: Container(
                     decoration: BoxDecoration(
-                      color: sheetTheme.colorScheme.surface,
+                      gradient: _chromePanelGradient,
                       borderRadius:
-                          const BorderRadius.vertical(top: Radius.circular(28)),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 18,
-                          offset: Offset(0, -6),
-                        ),
-                      ],
+                          const BorderRadius.vertical(top: Radius.circular(32)),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                      boxShadow: _elevatedShadow,
                     ),
                     child: SingleChildScrollView(
                       controller: scrollController,
