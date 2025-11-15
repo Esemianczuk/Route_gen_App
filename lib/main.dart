@@ -129,12 +129,61 @@ class _HelloScreenState extends State<HelloScreen>
   bool _isBikeMode = true;
   double _preferredMiles = 20;
   int _routeMode = 0;
-  final MenuController _layerMenuController = MenuController();
-  final List<String> _layerOptions = const [
-    'Leaflet Streets',
-    'Satellite View',
-    'Iso Lines',
-    'Minimal Light',
+  static const List<_LayerOption> _layerOptionPresets = [
+    _LayerOption(
+      title: 'Leaflet Streets',
+      subtitle: 'Bright multi-purpose base',
+      icon: Icons.public,
+      accent: Color(0xFF42E6A4),
+      background: [
+        Color(0xFF0D1F2D),
+        Color(0xFF112D42),
+      ],
+      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      subdomains: const [],
+      attribution: '© OpenStreetMap contributors',
+    ),
+    _LayerOption(
+      title: 'Satellite View',
+      subtitle: 'Rich aerial imagery',
+      icon: Icons.satellite_alt,
+      accent: Color(0xFF4DB8FF),
+      background: [
+        Color(0xFF0A1421),
+        Color(0xFF132542),
+      ],
+      urlTemplate:
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      subdomains: const [],
+      attribution: 'Source: Esri, Maxar, Earthstar Geographics',
+    ),
+    _LayerOption(
+      title: 'Iso Lines',
+      subtitle: 'Contour overlays',
+      icon: Icons.terrain,
+      accent: Color(0xFFFFB347),
+      background: [
+        Color(0xFF1B0E24),
+        Color(0xFF2A1638),
+      ],
+      urlTemplate: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+      subdomains: const ['a', 'b', 'c'],
+      attribution: '© OpenTopoMap contributors',
+    ),
+    _LayerOption(
+      title: 'Minimal Light',
+      subtitle: 'High contrast mono',
+      icon: Icons.blur_on,
+      accent: Color(0xFFE0E0E0),
+      background: [
+        Color(0xFF0F1115),
+        Color(0xFF1F232A),
+      ],
+      urlTemplate:
+          'https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png',
+      subdomains: const [],
+      attribution: '© Stadia Maps & OpenMapTiles',
+    ),
   ];
   final SearchController _searchController = SearchController();
   final List<String> _searchSuggestions = const [
@@ -148,6 +197,8 @@ class _HelloScreenState extends State<HelloScreen>
   double _navPulseValue = 0.5;
   bool _isRouteZoneMode = false;
   bool _isRouteZoneEditMode = false;
+  bool _isLayerSheetOpen = false;
+  int _selectedLayerIndex = 0;
   LatLngBounds? _routeZoneBounds;
   int? _routeZonePointerId;
   LatLng? _routeZoneStartLatLng;
@@ -205,6 +256,7 @@ class _HelloScreenState extends State<HelloScreen>
 
   @override
   Widget build(BuildContext context) {
+    final activeLayer = _HelloScreenState._layerOptionPresets[_selectedLayerIndex];
     final mediaQuery = MediaQuery.of(context);
     final topInset = mediaQuery.padding.top;
     final statusScrimHeight = topInset + 10;
@@ -273,7 +325,11 @@ class _HelloScreenState extends State<HelloScreen>
               ),
               children: [
                 TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  urlTemplate: activeLayer.urlTemplate,
+                  subdomains: activeLayer.subdomains,
+                  additionalOptions: {
+                    'attribution': activeLayer.attribution,
+                  },
                   userAgentPackageName: 'com.example.route_gen_app',
                 ),
                 if (_routeZoneBounds != null)
@@ -446,53 +502,43 @@ class _HelloScreenState extends State<HelloScreen>
                                 ),
                               ),
                               const SizedBox(height: 6),
-                              MenuAnchor(
-                                controller: _layerMenuController,
-                                alignmentOffset: const Offset(-12, 8),
-                                menuChildren: _layerOptions
-                                    .map(
-                                      (layer) => MenuItemButton(
-                                        onPressed: () => _layerMenuController.close(),
-                                        child: Text(layer),
-                                      ),
-                                    )
-                                    .toList(),
-                                builder: (context, controller, child) {
-                                  return Tooltip(
-                                    message: 'Layer controls',
-                                    child: _ToolbarButtonFrame(
-                                      child: Material(
-                                        color: Colors.transparent,
-                                        child: InkWell(
+                              Tooltip(
+                                message: 'Layer controls',
+                                child: _ToolbarButtonFrame(
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(12),
+                                      onTap: () => _openLayerPickerSheet(),
+                                      child: Container(
+                                        key: const ValueKey('layer-menu-button'),
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: accentColor.withValues(alpha: 0.16),
                                           borderRadius: BorderRadius.circular(12),
-                                          onTap: () {
-                                            controller.isOpen ? controller.close() : controller.open();
-                                          },
-                                          child: Container(
-                                            key: const ValueKey('layer-menu-button'),
-                                            padding: const EdgeInsets.all(6),
-                                            decoration: BoxDecoration(
-                                              color: accentColor.withValues(alpha: 0.16),
-                                              borderRadius: BorderRadius.circular(12),
-                                              border: Border.all(
-                                                color: accentColor.withValues(alpha: 0.35),
-                                                width: 1.2,
-                                              ),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: accentColor.withValues(alpha: 0.18),
-                                                  blurRadius: 8,
-                                                  offset: const Offset(0, 4),
-                                                ),
-                                              ],
-                                            ),
-                                            child: const Icon(Icons.layers_outlined, size: 18),
+                                          border: Border.all(
+                                            color: _isLayerSheetOpen
+                                                ? Colors.white.withValues(alpha: 0.95)
+                                                : accentColor.withValues(alpha: 0.4),
+                                            width: _isLayerSheetOpen ? 2.6 : 1.2,
                                           ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: accentColor.withValues(alpha: 0.2),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 4),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(
+                                          Icons.layers_outlined,
+                                          size: 18,
+                                          color: Colors.white,
                                         ),
                                       ),
                                     ),
-                                  );
-                                },
+                                  ),
+                                ),
                               ),
                               const SizedBox(height: 32),
                               Tooltip(
@@ -701,8 +747,12 @@ class _HelloScreenState extends State<HelloScreen>
               ),
             if (_isRouteZoneEditMode && _routeZoneBounds != null)
               _buildRouteZoneEditOverlay(),
-            if (_isAvoidAreaMode) _buildAvoidAreaOverlay(),
-            if (!_isAvoidAreaMode && _avoidZones.isNotEmpty)
+            if (_isAvoidAreaMode && !_isRouteZoneEditMode && !_isRouteZoneMode)
+              _buildAvoidAreaOverlay(),
+            if (!_isAvoidAreaMode &&
+                _avoidZones.isNotEmpty &&
+                !_isRouteZoneEditMode &&
+                !_isRouteZoneMode)
               _buildAvoidZoneCloseOnlyOverlay(),
             if (_routeZoneBounds != null &&
                 !_isRouteZoneMode &&
@@ -787,7 +837,9 @@ class _HelloScreenState extends State<HelloScreen>
                                   ),
                                   onPressed: isAvoidFocus
                                       ? _exitAvoidAreaMode
-                                      : _exitRouteZoneEditMode,
+                                      : (_isRouteZoneMode
+                                          ? _cancelRouteZoneMode
+                                          : _exitRouteZoneEditMode),
                                   icon: const Icon(Icons.close),
                                   label: Text(
                                     isAvoidFocus ? 'Exit edit mode' : 'Exit zone mode',
@@ -1135,6 +1187,115 @@ extension on _HelloScreenState {
         );
       },
     );
+  }
+
+  Future<void> _openLayerPickerSheet() async {
+    if (_isLayerSheetOpen) return;
+    setState(() => _isLayerSheetOpen = true);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      useSafeArea: true,
+      barrierColor: Colors.black.withOpacity(0.65),
+      builder: (sheetContext) {
+        final media = MediaQuery.of(sheetContext);
+        final maxHeight = media.size.height - 80;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            child: StatefulBuilder(
+              builder: (context, setSheetState) {
+                return Container(
+                  decoration: BoxDecoration(
+                    gradient: _chromePanelGradient,
+                    borderRadius: BorderRadius.circular(32),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                    boxShadow: _elevatedShadow,
+                  ),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white.withValues(alpha: 0.08),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.12),
+                                ),
+                              ),
+                              child: const Icon(Icons.layers, color: Colors.white, size: 18),
+                            ),
+                            const SizedBox(width: 16),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Choose map style',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    'Switch between satellite, contour, and minimalist looks.',
+                                    style: TextStyle(fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Close',
+                              onPressed: () => Navigator.of(sheetContext).pop(),
+                              icon: const Icon(Icons.close),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        ...List.generate(
+                          _HelloScreenState._layerOptionPresets.length,
+                          (index) {
+                            final option = _HelloScreenState._layerOptionPresets[index];
+                            final selected = index == _selectedLayerIndex;
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(28),
+                                  onTap: () {
+                                    setState(() => _selectedLayerIndex = index);
+                                    setSheetState(() {});
+                                  },
+                                  child: _LayerOptionTile(
+                                    option: option,
+                                    selected: selected,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+    if (!mounted) return;
+    setState(() => _isLayerSheetOpen = false);
   }
 
   void _openProfileSheet() {
@@ -1778,8 +1939,7 @@ extension on _HelloScreenState {
 
   Widget _buildRouteZoneEditOverlay() {
     final handles = _currentHandleOffsets();
-    final saveButton = _buildRouteZoneSaveButton();
-    final closeButton = _buildRouteZoneOverlayCloseButton();
+    final editControls = _buildRouteZoneEditControls();
     return Positioned.fill(
       child: Stack(
         clipBehavior: Clip.none,
@@ -1804,24 +1964,17 @@ extension on _HelloScreenState {
               ),
             ),
           ),
-          if (saveButton != null) saveButton,
-          if (closeButton != null) closeButton,
+          if (editControls != null) editControls,
         ],
       ),
     );
   }
 
   Widget? _buildRouteZoneSaveButton() {
-    final bounds = _routeZoneBounds;
-    if (bounds == null) return null;
-    final centerLatLng = LatLng(
-      (bounds.north + bounds.south) / 2,
-      (bounds.east + bounds.west) / 2,
-    );
-    final centerOffset = _offsetFromLatLng(centerLatLng);
+    if (_routeZoneBounds == null) return null;
     final accentColor = _isBikeMode ? _bikeAccent : _runAccent;
     final iconColor = Colors.white;
-    final button = _ToolbarButtonFrame(
+    return _ToolbarButtonFrame(
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -1863,25 +2016,11 @@ extension on _HelloScreenState {
         ),
       ),
     );
-    if (centerOffset == null) {
-      return Align(child: button);
-    }
-    return Positioned(
-      left: centerOffset.dx - 36,
-      top: centerOffset.dy - 20,
-      child: button,
-    );
   }
 
   Widget? _buildRouteZoneOverlayCloseButton() {
-    final bounds = _routeZoneBounds;
-    if (bounds == null) return null;
-    final centerLatLng = LatLng(
-      (bounds.north + bounds.south) / 2,
-      (bounds.east + bounds.west) / 2,
-    );
-    final centerOffset = _offsetFromLatLng(centerLatLng);
-    final button = _ToolbarButtonFrame(
+    if (_routeZoneBounds == null) return null;
+    return _ToolbarButtonFrame(
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -1923,23 +2062,43 @@ extension on _HelloScreenState {
         ),
       ),
     );
+  }
+
+  Widget? _buildRouteZoneEditControls() {
+    final bounds = _routeZoneBounds;
+    if (bounds == null) return null;
+    final centerLatLng = LatLng(
+      (bounds.north + bounds.south) / 2,
+      (bounds.east + bounds.west) / 2,
+    );
+    final centerOffset = _offsetFromLatLng(centerLatLng);
+    final saveButton = _buildRouteZoneSaveButton();
+    final closeButton = _buildRouteZoneOverlayCloseButton();
+    if (saveButton == null && closeButton == null) return null;
+    final children = <Widget>[
+      if (saveButton != null) saveButton,
+      if (saveButton != null && closeButton != null)
+        const SizedBox(height: 6),
+      if (closeButton != null) closeButton,
+    ];
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: children,
+    );
     if (centerOffset == null) {
-      return Align(
-        alignment: Alignment.center,
-        child: Padding(
-          padding: const EdgeInsets.only(top: 40),
-          child: button,
-        ),
-      );
+      return Align(child: content);
     }
     return Positioned(
-      left: centerOffset.dx - 40,
-      top: centerOffset.dy + 24,
-      child: button,
+      left: centerOffset.dx,
+      top: centerOffset.dy,
+      child: FractionalTranslation(
+        translation: const Offset(-0.5, -0.5),
+        child: content,
+      ),
     );
   }
 
-Widget? _buildRouteZoneStaticCloseButton() {
+  Widget? _buildRouteZoneStaticCloseButton() {
     final bounds = _routeZoneBounds;
     if (bounds == null) return null;
     final topRight = _offsetFromLatLng(LatLng(bounds.north, bounds.east));
@@ -2123,6 +2282,7 @@ Widget? _buildRouteZoneStaticCloseButton() {
   }
 
   Widget _buildAvoidZoneControls(_AvoidZone zone) {
+    if (_isRouteZoneEditMode || _isRouteZoneMode) return const SizedBox.shrink();
     final centerLatLng = LatLng(
       (zone.bounds.north + zone.bounds.south) / 2,
       (zone.bounds.east + zone.bounds.west) / 2,
@@ -2176,6 +2336,7 @@ Widget? _buildRouteZoneStaticCloseButton() {
   }
 
   List<Widget> _buildAvoidZoneStaticButtons(_AvoidZone zone) {
+    if (_isRouteZoneEditMode || _isRouteZoneMode) return const [];
     final bounds = zone.bounds;
     final topRight = _offsetFromLatLng(LatLng(bounds.north, bounds.east));
     final bottomLeft = _offsetFromLatLng(LatLng(bounds.south, bounds.west));
@@ -2189,9 +2350,8 @@ Widget? _buildRouteZoneStaticCloseButton() {
       },
     );
     final accentColor = _isBikeMode ? _bikeAccent : _runAccent;
-    final editButton = _buildZoneActionButton(
-      color: accentColor,
-      iconColor: Colors.white,
+    final editButton = _buildGenerateAccentIconButton(
+      accentColor: accentColor,
       icon: Icons.edit,
       onTap: () => _enterAvoidAreaMode(zone.id),
     );
@@ -2207,6 +2367,41 @@ Widget? _buildRouteZoneStaticCloseButton() {
         child: editButton,
       ),
     ];
+  }
+
+  Widget _buildGenerateAccentIconButton({
+    required Color accentColor,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return _ToolbarButtonFrame(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: accentColor.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: accentColor.withValues(alpha: 0.4),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: accentColor.withValues(alpha: 0.2),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Icon(icon, size: 18, color: Colors.white),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildZoneActionButton({
@@ -2316,6 +2511,7 @@ Widget? _buildRouteZoneStaticCloseButton() {
     if (_routeZoneStartLatLng == null || currentLatLng == null) {
       setState(() {
         _isRouteZoneMode = false;
+        _isRouteZoneEditMode = false;
         _routeZonePointerId = null;
         _routeZoneStartLatLng = null;
       });
@@ -2325,6 +2521,7 @@ Widget? _buildRouteZoneStaticCloseButton() {
       _routeZoneBounds =
           LatLngBounds.fromPoints([_routeZoneStartLatLng!, currentLatLng]);
       _isRouteZoneMode = false;
+      _isRouteZoneEditMode = true;
       _routeZonePointerId = null;
       _routeZoneStartLatLng = null;
     });
@@ -3464,6 +3661,146 @@ class _ToolbarButtonFrame extends StatelessWidget {
   }
 }
 
+class _LayerOption {
+  const _LayerOption({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.accent,
+    required this.background,
+    required this.urlTemplate,
+    required this.attribution,
+    this.subdomains = const [],
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color accent;
+  final List<Color> background;
+  final String urlTemplate;
+  final List<String> subdomains;
+  final String attribution;
+}
+
+class _LayerOptionTile extends StatelessWidget {
+  const _LayerOptionTile({required this.option, required this.selected});
+
+  final _LayerOption option;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final textColor = Colors.white.withValues(alpha: 0.92);
+    final gradient = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: option.background,
+    );
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      decoration: BoxDecoration(
+        gradient: gradient,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: selected
+              ? option.accent.withValues(alpha: 0.9)
+              : Colors.white.withValues(alpha: 0.08),
+          width: 1.4,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: option.accent.withValues(alpha: selected ? 0.35 : 0.2),
+            blurRadius: selected ? 28 : 18,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.black.withValues(alpha: 0.2),
+              border: Border.all(
+                color: option.accent.withValues(alpha: 0.6),
+                width: 1.4,
+              ),
+            ),
+            child: Icon(option.icon, color: option.accent, size: 22),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  option.title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: textColor,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  option.subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white.withValues(alpha: 0.7),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            transitionBuilder: (child, animation) =>
+                FadeTransition(opacity: animation, child: child),
+            child: selected
+                ? Container(
+                    key: const ValueKey('active-indicator'),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: option.accent.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(40),
+                      border: Border.all(
+                        color: option.accent.withValues(alpha: 0.9),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.check, size: 14, color: Colors.white),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Active',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : Icon(Icons.arrow_outward,
+                    key: const ValueKey('inactive-indicator'),
+                    size: 18,
+                    color: Colors.white.withValues(alpha: 0.65)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _AnalyticsChip extends StatelessWidget {
   const _AnalyticsChip({
     required this.label,
@@ -3623,11 +3960,12 @@ class _RouteZoneHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final topInset = MediaQuery.paddingOf(context).top;
     return IgnorePointer(
       child: Align(
         alignment: Alignment.topLeft,
         child: Container(
-          margin: const EdgeInsets.all(20),
+          margin: EdgeInsets.fromLTRB(20, topInset + 12, 20, 20),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: Colors.black.withValues(alpha: 0.55),
@@ -3656,11 +3994,12 @@ class _AvoidAreaHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final topInset = MediaQuery.paddingOf(context).top;
     return IgnorePointer(
       child: Align(
         alignment: Alignment.topLeft,
         child: Container(
-          margin: const EdgeInsets.all(20),
+          margin: EdgeInsets.fromLTRB(20, topInset + 12, 20, 20),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: Colors.black.withValues(alpha: 0.55),
