@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:video_player/video_player.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -86,6 +87,8 @@ const _elevatedShadow = [
 ];
 const _navEdgeBase = Color(0xFF0A101C);
 const _navCenterBase = Color(0xFF0D3450);
+const BorderRadius _toolbarButtonRadius = BorderRadius.all(Radius.circular(10));
+const BorderRadius _distanceButtonRadius = BorderRadius.all(Radius.circular(14));
 const _routeZoneAccent = Color(0xFF5C2C92);
 const _routeZoneAccentIcon = Color(0xFFE9D7FF);
 const double _avoidDragActivationDistance = 8;
@@ -113,7 +116,361 @@ class RouteGenApp extends StatelessWidget {
         useMaterial3: true,
       ),
       themeMode: ThemeMode.dark,
-      home: const HelloScreen(),
+      home: const IntroVideoScreen(),
+    );
+  }
+}
+
+class IntroVideoScreen extends StatefulWidget {
+  const IntroVideoScreen({super.key});
+
+  @override
+  State<IntroVideoScreen> createState() => _IntroVideoScreenState();
+}
+
+class _IntroVideoScreenState extends State<IntroVideoScreen> {
+  late final VideoPlayerController _controller;
+  bool _videoInitFailed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.asset('assets/intro_loop.mp4');
+    _initializeVideo();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initializeVideo() async {
+    try {
+      await _controller.initialize();
+      if (!mounted) return;
+      setState(() {});
+      _controller
+        ..setLooping(true)
+        ..setVolume(0)
+        ..play();
+    } on PlatformException catch (error) {
+      debugPrint('Intro video failed to load: $error');
+      if (mounted) {
+        setState(() => _videoInitFailed = true);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (_videoInitFailed)
+            Container(
+              color: Colors.black,
+              alignment: Alignment.center,
+              child: const Text(
+                'Video preview unavailable on this platform.',
+                style: TextStyle(color: Colors.white70),
+              ),
+            )
+          else if (_controller.value.isInitialized)
+            ClipRect(
+              child: SizedBox.expand(
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: _controller.value.size.width,
+                    height: _controller.value.size.height,
+                    child: VideoPlayer(_controller),
+                  ),
+                ),
+              ),
+            )
+          else
+            const Center(child: CircularProgressIndicator()),
+          const Positioned.fill(child: _TechOverlay()),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 48),
+              child: _LoginCard(
+                onLogin: () {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (_) => const HelloScreen()),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TechOverlay extends StatelessWidget {
+  const _TechOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              _navCenterBase.withOpacity(0.32),
+              _navEdgeBase.withOpacity(0.24),
+              Colors.black.withOpacity(0.3),
+            ],
+            stops: const [0.0, 0.45, 1.0],
+          ),
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+            gradient: LinearGradient(
+              begin: Alignment.bottomCenter,
+              end: Alignment.topCenter,
+              colors: [
+                Colors.black.withOpacity(0.5),
+                Colors.black.withOpacity(0.18),
+                Colors.white.withOpacity(0.03),
+              ],
+              stops: const [0.0, 0.45, 1.0],
+            ),
+          ),
+          child: const CustomPaint(
+            painter: _TechOverlayPainter(),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TechOverlayPainter extends CustomPainter {
+  const _TechOverlayPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final diagonalPaint = Paint()
+      ..color = Colors.white.withOpacity(0.035)
+      ..strokeWidth = 1;
+    const spacing = 90.0;
+    for (double offset = -size.height; offset < size.width; offset += spacing) {
+      canvas.drawLine(
+        Offset(offset, 0),
+        Offset(offset + size.height, size.height),
+        diagonalPaint,
+      );
+    }
+
+    final verticalPaint = Paint()
+      ..color = Colors.white.withOpacity(0.03)
+      ..strokeWidth = 0.8;
+    for (double x = 0; x <= size.width; x += 70) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), verticalPaint);
+    }
+
+    final accentPaint = Paint()
+      ..shader = ui.Gradient.radial(
+        Offset(size.width * 0.75, size.height * 0.25),
+        size.shortestSide * 0.9,
+        [
+          Colors.white.withOpacity(0.18),
+          Colors.transparent,
+        ],
+      );
+    canvas.drawRect(Offset.zero & size, accentPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _LoginCard extends StatefulWidget {
+  const _LoginCard({required this.onLogin});
+
+  final VoidCallback onLogin;
+
+  @override
+  State<_LoginCard> createState() => _LoginCardState();
+}
+
+class _LoginCardState extends State<_LoginCard> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _obscure = true;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final borderRadius = BorderRadius.circular(28);
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            borderRadius: borderRadius,
+            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withOpacity(0.18),
+                Colors.white.withOpacity(0.06),
+                Colors.white.withOpacity(0.04),
+              ],
+              stops: const [0.0, 0.4, 1.0],
+            ),
+            boxShadow: _elevatedShadow,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.white.withOpacity(0.25),
+                          Colors.white.withOpacity(0.05),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                    ),
+                    child: const Icon(Icons.near_me, color: Colors.white),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text(
+                          'Welcome back',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Sign in to keep building epic routes.',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                style: const TextStyle(color: Colors.white),
+                decoration: _loginFieldDecoration(
+                  label: 'Email',
+                  icon: Icons.mail_outline,
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: _passwordController,
+                obscureText: _obscure,
+                style: const TextStyle(color: Colors.white),
+                decoration: _loginFieldDecoration(
+                  label: 'Password',
+                  icon: Icons.lock_outline,
+                  suffix: IconButton(
+                    icon: Icon(
+                      _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                      color: Colors.white70,
+                    ),
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: _SettingsUnitChip(
+                      label: 'Log in',
+                      icon: Icons.login_rounded,
+                      selected: true,
+                      accentColor: _runAccent,
+                      emphasize: true,
+                      onTap: widget.onLogin,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _SettingsUnitChip(
+                      label: 'Sign up',
+                      icon: Icons.person_add_alt,
+                      selected: false,
+                      accentColor: _bikeAccent,
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const HelloScreen()),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  InputDecoration _loginFieldDecoration({
+    required String label,
+    required IconData icon,
+    Widget? suffix,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon, color: Colors.white70),
+      suffixIcon: suffix,
+      labelStyle: const TextStyle(color: Colors.white70),
+      filled: true,
+      fillColor: Colors.white.withValues(alpha: 0.06),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(18),
+        borderSide: BorderSide(color: _runAccent.withValues(alpha: 0.7)),
+      ),
     );
   }
 }
@@ -197,6 +554,8 @@ class _HelloScreenState extends State<HelloScreen>
   final MapController _mapController = MapController();
   late final AnimationController _navPulseController;
   double _navPulseValue = 0.5;
+  bool _isSearchExpanded = false;
+  double _buttonScale = 1.0;
   bool _isRouteZoneMode = false;
   bool _isRouteZoneEditMode = false;
   bool _isLayerSheetOpen = false;
@@ -232,6 +591,12 @@ class _HelloScreenState extends State<HelloScreen>
   Color get _activeAccentColor => _activeMode.accentColor;
   _LanguageOption get _activeLanguage =>
       _languageOptions[_selectedLanguageIndex];
+  TextStyle _toolbarLabelStyle(Color color) => TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.2,
+        color: color,
+      );
   String _tr(String key) {
     final code = _activeLanguage.code;
     final entry = _localizedStrings[key];
@@ -408,7 +773,7 @@ class _HelloScreenState extends State<HelloScreen>
               ),
             ),
             Align(
-              alignment: Alignment.centerRight,
+              alignment: Alignment.topRight,
               child: AnimatedOpacity(
                 opacity: hideSideToolbar ? 0 : 1,
                 duration: const Duration(milliseconds: 220),
@@ -416,44 +781,74 @@ class _HelloScreenState extends State<HelloScreen>
                 child: IgnorePointer(
                   ignoring: hideSideToolbar,
                   child: SafeArea(
+                    bottom: false,
                     child: Padding(
-                      padding: const EdgeInsets.only(right: 16, top: 14, bottom: 14),
-                      child: ConstrainedBox(
-                        key: const ValueKey('actions-toolbar'),
-                        constraints: const BoxConstraints(
-                          minWidth: 48,
-                          maxWidth: 60,
+                      padding: const EdgeInsets.only(right: 16, top: 10),
+                      child: Tooltip(
+                        message: _tr('distance.title'),
+                        child: _ToolbarButtonFrame(
+                          borderRadius: _distanceButtonRadius,
+                          child: _DistanceBadge(
+                            miles: _preferredMiles,
+                            onTap: () => _openDistanceSheet(),
+                            expanded: _isSearchExpanded,
+                          ),
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.center,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Transform.scale(
+                scale: _buttonScale,
+                alignment: Alignment.topRight,
+                child: AnimatedOpacity(
+                  opacity: hideSideToolbar ? 0 : 1,
+                  duration: const Duration(milliseconds: 220),
+                curve: Curves.easeInOut,
+                child: IgnorePointer(
+                  ignoring: hideSideToolbar,
+                  child: SafeArea(
+                    child: Padding(
+                        padding: const EdgeInsets.only(right: 16, top: 14, bottom: 14),
+                        child: ConstrainedBox(
+                          key: const ValueKey('actions-toolbar'),
+                          constraints: BoxConstraints(
+                            minWidth: 48,
+                            maxWidth: _isSearchExpanded ? 220 : 60,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: _isSearchExpanded
+                                ? CrossAxisAlignment.end
+                                : CrossAxisAlignment.center,
                             children: [
-                              Tooltip(
-                                message: _tr('distance.title'),
-                                child: _ToolbarButtonFrame(
-                                  child: _DistanceBadge(
-                                    miles: _preferredMiles,
-                                    onTap: () => _openDistanceSheet(),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 32),
+                              const SizedBox(height: 36),
                               Tooltip(
                                 message: _tr('mode.sheet.title'),
                                 child: _ToolbarButtonFrame(
+                                  borderRadius: _toolbarButtonRadius,
                                   child: Material(
                                     color: Colors.transparent,
                                     child: InkWell(
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius: _toolbarButtonRadius,
                                       onTap: _openModeSheet,
-                                      child: Container(
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 220),
+                                        curve: Curves.easeInOut,
                                         key: const ValueKey('mode-toggle-button'),
-                                        padding: const EdgeInsets.all(6),
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: _isSearchExpanded ? 12 : 6,
+                                          vertical: 6,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: accentColor.withValues(alpha: 0.16),
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius: _toolbarButtonRadius,
                                           border: Border.all(
                                             color: _isModeSheetOpen
                                                 ? Colors.white.withValues(alpha: 0.95)
@@ -468,67 +863,52 @@ class _HelloScreenState extends State<HelloScreen>
                                             ),
                                           ],
                                         ),
-                                        child: Icon(
-                                          _activeMode.icon,
-                                          size: 18,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Tooltip(
-                                message: 'Search routes or places',
-                                child: _ToolbarButtonFrame(
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      borderRadius: BorderRadius.circular(16),
-                                      onTap: _openSearchSheet,
-                                      child: Container(
-                                        key: const ValueKey('open-search-button'),
-                                        padding: const EdgeInsets.all(6),
-                                        decoration: BoxDecoration(
-                                          color: accentColor.withValues(alpha: 0.16),
-                                          borderRadius: BorderRadius.circular(12),
-                                          border: Border.all(
-                                            color: accentColor.withValues(alpha: 0.4),
-                                            width: 1.2,
-                                          ),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: accentColor.withValues(alpha: 0.2),
-                                              blurRadius: 8,
-                                              offset: const Offset(0, 4),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          mainAxisAlignment: _isSearchExpanded
+                                              ? MainAxisAlignment.end
+                                              : MainAxisAlignment.center,
+                                          children: [
+                                            Icon(
+                                              _activeMode.icon,
+                                              size: 18,
                                             ),
+                                            if (_isSearchExpanded) ...[
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Mode',
+                                                style:
+                                                    _toolbarLabelStyle(Colors.white),
+                                              ),
+                                            ],
                                           ],
                                         ),
-                                        child: Icon(
-                                          Icons.search,
-                                          color: Theme.of(context).colorScheme.onSurface,
-                                          size: 18,
-                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 12),
                               Tooltip(
                                 message: 'Layer controls',
                                 child: _ToolbarButtonFrame(
+                                  borderRadius: _toolbarButtonRadius,
                                   child: Material(
                                     color: Colors.transparent,
                                     child: InkWell(
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius: _toolbarButtonRadius,
                                       onTap: () => _openLayerPickerSheet(),
-                                      child: Container(
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 220),
+                                        curve: Curves.easeInOut,
                                         key: const ValueKey('layer-menu-button'),
-                                        padding: const EdgeInsets.all(6),
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: _isSearchExpanded ? 12 : 6,
+                                          vertical: 6,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: accentColor.withValues(alpha: 0.16),
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius: _toolbarButtonRadius,
                                           border: Border.all(
                                             color: _isLayerSheetOpen
                                                 ? Colors.white.withValues(alpha: 0.95)
@@ -543,33 +923,55 @@ class _HelloScreenState extends State<HelloScreen>
                                             ),
                                           ],
                                         ),
-                                        child: const Icon(
-                                          Icons.layers_outlined,
-                                          size: 18,
-                                          color: Colors.white,
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          mainAxisAlignment: _isSearchExpanded
+                                              ? MainAxisAlignment.end
+                                              : MainAxisAlignment.center,
+                                          children: [
+                                            const Icon(
+                                              Icons.layers_outlined,
+                                              size: 18,
+                                              color: Colors.white,
+                                            ),
+                                            if (_isSearchExpanded) ...[
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Layers',
+                                                style:
+                                                    _toolbarLabelStyle(Colors.white),
+                                              ),
+                                            ],
+                                          ],
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 32),
+                              const SizedBox(height: 36),
                               Tooltip(
                                 message: 'Undo last change',
                                 child: _ToolbarButtonFrame(
+                                  borderRadius: _toolbarButtonRadius,
                                   child: Material(
                                     color: Colors.transparent,
                                     child: InkWell(
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius: _toolbarButtonRadius,
                                       onTap: () {
                                         // TODO: hook up undo stack
                                       },
-                                      child: Container(
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 220),
+                                        curve: Curves.easeInOut,
                                         key: const ValueKey('undo-button'),
-                                        padding: const EdgeInsets.all(6),
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: _isSearchExpanded ? 12 : 6,
+                                          vertical: 6,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: _historyButtonBase.withValues(alpha: 0.22),
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius: _toolbarButtonRadius,
                                           border: Border.all(
                                             color: _historyButtonBase.withValues(alpha: 0.38),
                                             width: 1.2,
@@ -582,33 +984,57 @@ class _HelloScreenState extends State<HelloScreen>
                                             ),
                                           ],
                                         ),
-                                        child: const Icon(
-                                          Icons.undo,
-                                          size: 18,
-                                          color: _historyButtonIcon,
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          mainAxisAlignment: _isSearchExpanded
+                                              ? MainAxisAlignment.end
+                                              : MainAxisAlignment.center,
+                                          children: [
+                                            const Icon(
+                                              Icons.undo,
+                                              size: 18,
+                                              color: _historyButtonIcon,
+                                            ),
+                                            if (_isSearchExpanded) ...[
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Undo',
+                                                style: _toolbarLabelStyle(
+                                                  _historyButtonIcon,
+                                                ),
+                                              ),
+                                            ],
+                                          ],
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 12),
                               Tooltip(
                                 message: 'Redo change',
                                 child: _ToolbarButtonFrame(
+                                  borderRadius: _toolbarButtonRadius,
                                   child: Material(
                                     color: Colors.transparent,
                                     child: InkWell(
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius: _toolbarButtonRadius,
                                       onTap: () {
                                         // TODO: hook up redo stack
                                       },
-                                      child: Container(
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 220),
+                                        curve: Curves.easeInOut,
                                         key: const ValueKey('redo-button'),
-                                        padding: const EdgeInsets.all(6),
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: _isSearchExpanded ? 12 : 6,
+                                          vertical: 6,
+                                        ),
                                         decoration: BoxDecoration(
-                                          color: _historyButtonBase.withValues(alpha: 0.22),
-                                          borderRadius: BorderRadius.circular(12),
+                                          color:
+                                              _historyButtonBase.withValues(alpha: 0.22),
+                                          borderRadius: _toolbarButtonRadius,
                                           border: Border.all(
                                             color: _historyButtonBase.withValues(alpha: 0.38),
                                             width: 1.2,
@@ -621,33 +1047,56 @@ class _HelloScreenState extends State<HelloScreen>
                                             ),
                                           ],
                                         ),
-                                        child: const Icon(
-                                          Icons.redo,
-                                          size: 18,
-                                          color: _historyButtonIcon,
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          mainAxisAlignment: _isSearchExpanded
+                                              ? MainAxisAlignment.end
+                                              : MainAxisAlignment.center,
+                                          children: [
+                                            const Icon(
+                                              Icons.redo,
+                                              size: 18,
+                                              color: _historyButtonIcon,
+                                            ),
+                                            if (_isSearchExpanded) ...[
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Redo',
+                                                style: _toolbarLabelStyle(
+                                                  _historyButtonIcon,
+                                                ),
+                                              ),
+                                            ],
+                                          ],
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 32),
+                              const SizedBox(height: 36),
                               Tooltip(
                                 message: 'Clear current route',
                                 child: _ToolbarButtonFrame(
+                                  borderRadius: _toolbarButtonRadius,
                                   child: Material(
                                     color: Colors.transparent,
                                     child: InkWell(
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius: _toolbarButtonRadius,
                                       onTap: () {
                                         // TODO: implement clear route
                                       },
-                                      child: Container(
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 220),
+                                        curve: Curves.easeInOut,
                                         key: const ValueKey('clear-button'),
-                                        padding: const EdgeInsets.all(6),
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: _isSearchExpanded ? 12 : 6,
+                                          vertical: 6,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: _clearButtonBase.withValues(alpha: 0.2),
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius: _toolbarButtonRadius,
                                           border: Border.all(
                                             color: _clearButtonBase.withValues(alpha: 0.38),
                                             width: 1.2,
@@ -660,31 +1109,54 @@ class _HelloScreenState extends State<HelloScreen>
                                             ),
                                           ],
                                         ),
-                                        child: const Icon(
-                                          Icons.close,
-                                          size: 18,
-                                          color: _clearButtonIcon,
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          mainAxisAlignment: _isSearchExpanded
+                                              ? MainAxisAlignment.end
+                                              : MainAxisAlignment.center,
+                                          children: [
+                                            const Icon(
+                                              Icons.close,
+                                              size: 18,
+                                              color: _clearButtonIcon,
+                                            ),
+                                            if (_isSearchExpanded) ...[
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Clear',
+                                                style: _toolbarLabelStyle(
+                                                  _clearButtonIcon,
+                                                ),
+                                              ),
+                                            ],
+                                          ],
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 12),
                               Tooltip(
                                 message: 'Toolbar settings',
                                 child: _ToolbarButtonFrame(
+                                  borderRadius: _toolbarButtonRadius,
                                   child: Material(
                                     color: Colors.transparent,
                                     child: InkWell(
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius: _toolbarButtonRadius,
                                       onTap: _openSettingsSheet,
-                                      child: Container(
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 220),
+                                        curve: Curves.easeInOut,
                                         key: const ValueKey('settings-button'),
-                                        padding: const EdgeInsets.all(6),
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: _isSearchExpanded ? 12 : 6,
+                                          vertical: 6,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: accentColor.withValues(alpha: 0.16),
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius: _toolbarButtonRadius,
                                           border: Border.all(
                                             color: accentColor.withValues(alpha: 0.35),
                                             width: 1.2,
@@ -697,27 +1169,49 @@ class _HelloScreenState extends State<HelloScreen>
                                             ),
                                           ],
                                         ),
-                                        child: const Icon(Icons.settings, size: 18),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          mainAxisAlignment: _isSearchExpanded
+                                              ? MainAxisAlignment.end
+                                              : MainAxisAlignment.center,
+                                          children: [
+                                            const Icon(Icons.settings, size: 18),
+                                            if (_isSearchExpanded) ...[
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Settings',
+                                                style:
+                                                    _toolbarLabelStyle(Colors.white),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 12),
                               Tooltip(
                                 message: 'View analytics',
                                 child: _ToolbarButtonFrame(
+                                  borderRadius: _toolbarButtonRadius,
                                   child: Material(
                                     color: Colors.transparent,
                                     child: InkWell(
-                                      borderRadius: BorderRadius.circular(12),
+                                      borderRadius: _toolbarButtonRadius,
                                       onTap: _openAnalyticsSheet,
-                                      child: Container(
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 220),
+                                        curve: Curves.easeInOut,
                                         key: const ValueKey('stats-button'),
-                                        padding: const EdgeInsets.all(6),
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: _isSearchExpanded ? 12 : 6,
+                                          vertical: 6,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: accentColor.withValues(alpha: 0.16),
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius: _toolbarButtonRadius,
                                           border: Border.all(
                                             color: accentColor.withValues(alpha: 0.35),
                                             width: 1.2,
@@ -730,7 +1224,82 @@ class _HelloScreenState extends State<HelloScreen>
                                             ),
                                           ],
                                         ),
-                                        child: const Icon(Icons.query_stats, size: 18),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          mainAxisAlignment: _isSearchExpanded
+                                              ? MainAxisAlignment.end
+                                              : MainAxisAlignment.center,
+                                          children: [
+                                            const Icon(Icons.query_stats, size: 18),
+                                            if (_isSearchExpanded) ...[
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Graph',
+                                                style:
+                                                    _toolbarLabelStyle(Colors.white),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Tooltip(
+                                message: 'Quick info',
+                                child: _ToolbarButtonFrame(
+                                  borderRadius: _toolbarButtonRadius,
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      borderRadius: _toolbarButtonRadius,
+                                      onTap: () {
+                                        setState(
+                                            () => _isSearchExpanded = !_isSearchExpanded);
+                                      },
+                                      onLongPress: _openInfoSheet,
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 220),
+                                        curve: Curves.easeInOut,
+                                        key: const ValueKey('info-button'),
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: _isSearchExpanded ? 12 : 6,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: accentColor.withValues(alpha: 0.16),
+                                          borderRadius: _toolbarButtonRadius,
+                                          border: Border.all(
+                                            color: accentColor.withValues(alpha: 0.35),
+                                            width: 1.2,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: accentColor.withValues(alpha: 0.18),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 4),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          mainAxisAlignment: _isSearchExpanded
+                                              ? MainAxisAlignment.end
+                                              : MainAxisAlignment.center,
+                                          children: [
+                                            const Icon(Icons.info_outline, size: 18),
+                                            if (_isSearchExpanded) ...[
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Info',
+                                                style:
+                                                    _toolbarLabelStyle(Colors.white),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -745,6 +1314,7 @@ class _HelloScreenState extends State<HelloScreen>
                 ),
               ),
             ),
+          ),
             if (_isRouteZoneMode)
               Positioned.fill(
                 child: Listener(
@@ -753,13 +1323,25 @@ class _HelloScreenState extends State<HelloScreen>
                   onPointerMove: _handleRouteZonePointerMove,
                   onPointerUp: _handleRouteZonePointerEnd,
                   onPointerCancel: _handleRouteZonePointerEnd,
-                  child: const _RouteZoneHint(),
+                  child: const SizedBox.expand(),
                 ),
+              ),
+            if (_isRouteZoneMode)
+              _ModeHintBanner(
+                icon: Icons.crop_free,
+                text: 'Drag to draw a Route Zone',
+                gradient: navGradient,
               ),
             if (_isRouteZoneEditMode && _routeZoneBounds != null)
               _buildRouteZoneEditOverlay(),
             if (_isAvoidAreaMode && !_isRouteZoneEditMode && !_isRouteZoneMode)
               _buildAvoidAreaOverlay(),
+            if (_isAvoidAreaMode && !_isRouteZoneMode && !_isRouteZoneEditMode)
+              _ModeHintBanner(
+                icon: Icons.block,
+                text: 'Drag to draw Avoid Areas',
+                gradient: navGradient,
+              ),
             if (!_isAvoidAreaMode &&
                 _avoidZones.isNotEmpty &&
                 !_isRouteZoneEditMode &&
@@ -1002,7 +1584,7 @@ class _HelloScreenState extends State<HelloScreen>
   }
 }
 
-extension on _HelloScreenState {
+extension HelloScreenActions on _HelloScreenState {
   Future<void> _openDistanceSheet() async {
     double _milesFromUnit(double value, int unit) {
       if (unit == 1) return value / 1.60934;
@@ -1248,6 +1830,7 @@ extension on _HelloScreenState {
         return StatefulBuilder(
           builder: (context, setSheetState) {
             final accentColor = _activeAccentColor;
+            final sliderLabel = '${(_buttonScale * 100).round()}%';
             return Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               child: Container(
@@ -1363,6 +1946,69 @@ extension on _HelloScreenState {
                           await _openLanguageDialog();
                           setSheetState(() {});
                         },
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        _tr('settings.buttonScale'),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _tr('settings.buttonScaleSubtitle'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withValues(alpha: 0.7),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SliderTheme(
+                              data: SliderTheme.of(context).copyWith(
+                                trackHeight: 4,
+                                activeTrackColor: accentColor,
+                                inactiveTrackColor:
+                                    Colors.white.withValues(alpha: 0.2),
+                                thumbColor: accentColor,
+                                overlayColor: accentColor.withValues(alpha: 0.15),
+                              ),
+                              child: Slider(
+                                value: _buttonScale,
+                                min: 0.85,
+                                max: 1.3,
+                                divisions: 9,
+                                label: sliderLabel,
+                                onChanged: (value) {
+                                  setState(() => _buttonScale = value);
+                                  setSheetState(() {});
+                                },
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.18),
+                              ),
+                              color: Colors.white.withValues(alpha: 0.06),
+                            ),
+                            child: Text(
+                              sliderLabel,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.4,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -2335,6 +2981,83 @@ extension on _HelloScreenState {
     );
   }
 
+  void _openInfoSheet() {
+    final accentColor = _activeAccentColor;
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: _chromePanelGradient,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+              boxShadow: _elevatedShadow,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: accentColor.withValues(alpha: 0.16),
+                        child: Icon(Icons.info_outline, color: accentColor),
+                      ),
+                      const SizedBox(width: 16),
+                      const Expanded(
+                        child: Text(
+                          'Route Gen quick tips',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Use the right-side tools to tailor your map experience.',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 12),
+                  _InfoTipRow(
+                    icon: Icons.query_stats,
+                    label: 'Check elevation details from the graph button.',
+                  ),
+                  _InfoTipRow(
+                    icon: Icons.block,
+                    label:
+                        'Draw Avoid Areas to keep routes away from specific zones.',
+                  ),
+                  _InfoTipRow(
+                    icon: Icons.crop_free,
+                    label:
+                        'Route Zone lets you focus generation inside a custom region.',
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Need more? Tap the profile or settings buttons to dive deeper.',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   LinearGradient _navGradientForPulse(double pulse) {
     final edgeStart =
         Color.lerp(_navEdgeBase.withOpacity(0.75), _navEdgeBase.withOpacity(0.4), pulse)!;
@@ -2385,43 +3108,48 @@ extension on _HelloScreenState {
     if (_routeZoneBounds == null) return null;
     final accentColor = _activeAccentColor;
     final iconColor = Colors.white;
-    return _ToolbarButtonFrame(
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: _exitRouteZoneEditMode,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: accentColor.withValues(alpha: 0.35),
-                width: 1.2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: accentColor.withValues(alpha: 0.18),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
+    return _scaleButton(
+      _ToolbarButtonFrame(
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: _exitRouteZoneEditMode,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: accentColor.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: accentColor.withValues(alpha: 0.35),
+                  width: 1.2,
                 ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.check, size: 18, color: iconColor),
-                const SizedBox(width: 8),
-                Text(
-                  'Save',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    color: iconColor,
+                boxShadow: [
+                  BoxShadow(
+                    color: accentColor.withValues(alpha: 0.18),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
                   ),
-                ),
-              ],
+                ],
+              ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          mainAxisAlignment: _isSearchExpanded
+                                              ? MainAxisAlignment.end
+                                              : MainAxisAlignment.center,
+                                          children: [
+                  Icon(Icons.check, size: 18, color: iconColor),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Save',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: iconColor,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -2431,43 +3159,45 @@ extension on _HelloScreenState {
 
   Widget? _buildRouteZoneOverlayCloseButton() {
     if (_routeZoneBounds == null) return null;
-    return _ToolbarButtonFrame(
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: _clearRouteZone,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: _clearButtonBase.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _clearButtonBase.withValues(alpha: 0.38),
-                width: 1.2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: _clearButtonBase.withValues(alpha: 0.22),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
+    return _scaleButton(
+      _ToolbarButtonFrame(
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: _clearRouteZone,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: _clearButtonBase.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _clearButtonBase.withValues(alpha: 0.38),
+                  width: 1.2,
                 ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: const [
-                Icon(Icons.close, size: 18, color: _clearButtonIcon),
-                SizedBox(width: 8),
-                Text(
-                  'Clear',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    color: _clearButtonIcon,
+                boxShadow: [
+                  BoxShadow(
+                    color: _clearButtonBase.withValues(alpha: 0.22),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
                   ),
-                ),
-              ],
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Icon(Icons.close, size: 18, color: _clearButtonIcon),
+                  SizedBox(width: 8),
+                  Text(
+                    'Clear',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: _clearButtonIcon,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -2513,30 +3243,32 @@ extension on _HelloScreenState {
     final bounds = _routeZoneBounds;
     if (bounds == null) return null;
     final topRight = _offsetFromLatLng(LatLng(bounds.north, bounds.east));
-    final button = _ToolbarButtonFrame(
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: _clearRouteZone,
-          child: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: _clearButtonBase.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _clearButtonBase.withValues(alpha: 0.38),
-                width: 1.2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: _clearButtonBase.withValues(alpha: 0.22),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
+    final button = _scaleButton(
+      _ToolbarButtonFrame(
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: _clearRouteZone,
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: _clearButtonBase.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _clearButtonBase.withValues(alpha: 0.38),
+                  width: 1.2,
                 ),
-              ],
+                boxShadow: [
+                  BoxShadow(
+                    color: _clearButtonBase.withValues(alpha: 0.22),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.close, size: 18, color: _clearButtonIcon),
             ),
-            child: const Icon(Icons.close, size: 18, color: _clearButtonIcon),
           ),
         ),
       ),
@@ -2561,38 +3293,40 @@ extension on _HelloScreenState {
     final bounds = _routeZoneBounds;
     if (bounds == null) return null;
     final bottomLeft = _offsetFromLatLng(LatLng(bounds.south, bounds.west));
-    final button = SizedBox(
-      width: 34,
-      height: 34,
-      child: _ToolbarButtonFrame(
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: _isRouteZoneEditMode
-                ? _exitRouteZoneEditMode
-                : _enterRouteZoneEditMode,
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: _routeZoneAccent.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: _routeZoneAccent.withValues(alpha: 0.4),
-                  width: 1.2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: _routeZoneAccent.withValues(alpha: 0.18),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
+    final button = _scaleButton(
+      SizedBox(
+        width: 34,
+        height: 34,
+        child: _ToolbarButtonFrame(
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: _isRouteZoneEditMode
+                  ? _exitRouteZoneEditMode
+                  : _enterRouteZoneEditMode,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: _routeZoneAccent.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _routeZoneAccent.withValues(alpha: 0.4),
+                    width: 1.2,
                   ),
-                ],
-              ),
-              child: Icon(
-                Icons.edit,
-                size: 18,
-                color: _routeZoneAccentIcon,
+                  boxShadow: [
+                    BoxShadow(
+                      color: _routeZoneAccent.withValues(alpha: 0.18),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  Icons.edit,
+                  size: 18,
+                  color: _routeZoneAccentIcon,
+                ),
               ),
             ),
           ),
@@ -2638,15 +3372,14 @@ extension on _HelloScreenState {
           Listener(
             behavior: HitTestBehavior.opaque,
             onPointerDown: _handleAvoidPointerDown,
-            onPointerMove: _handleAvoidPointerMove,
-            onPointerUp: _handleAvoidPointerEnd,
-            onPointerCancel: _handleAvoidPointerEnd,
-            child: const SizedBox.expand(),
-          ),
-          if (_avoidZones.isEmpty) const _AvoidAreaHint(),
-          for (final entry in handleOffsets.entries)
-            for (final handle in entry.value.entries)
-              Positioned(
+          onPointerMove: _handleAvoidPointerMove,
+          onPointerUp: _handleAvoidPointerEnd,
+          onPointerCancel: _handleAvoidPointerEnd,
+          child: const SizedBox.expand(),
+        ),
+        for (final entry in handleOffsets.entries)
+          for (final handle in entry.value.entries)
+            Positioned(
                 left: handle.value.dx - 14,
                 top: handle.value.dy - 14,
                 child: IgnorePointer(
@@ -2785,33 +3518,47 @@ extension on _HelloScreenState {
     required IconData icon,
     required VoidCallback onTap,
   }) {
-    return _ToolbarButtonFrame(
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: accentColor.withValues(alpha: 0.4),
-                width: 1.2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: accentColor.withValues(alpha: 0.2),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
+    return _scaleButton(
+      _ToolbarButtonFrame(
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: accentColor.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: accentColor.withValues(alpha: 0.4),
+                  width: 1.2,
                 ),
-              ],
+                boxShadow: [
+                  BoxShadow(
+                    color: accentColor.withValues(alpha: 0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Icon(icon, size: 18, color: Colors.white),
             ),
-            child: Icon(icon, size: 18, color: Colors.white),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _scaleButton(
+    Widget child, {
+    Alignment alignment = Alignment.center,
+  }) {
+    if (_buttonScale == 1.0) return child;
+    return Transform.scale(
+      scale: _buttonScale,
+      alignment: alignment,
+      child: child,
     );
   }
 
@@ -2823,7 +3570,7 @@ extension on _HelloScreenState {
     String? label,
   }) {
     final hasLabel = label != null;
-    return SizedBox(
+    final button = SizedBox(
       width: hasLabel ? null : 34,
       height: hasLabel ? null : 34,
       child: _ToolbarButtonFrame(
@@ -2873,6 +3620,7 @@ extension on _HelloScreenState {
         ),
       ),
     );
+    return _scaleButton(button);
   }
 
   List<LatLng> _boundsPolygonPoints(LatLngBounds bounds) {
@@ -3803,63 +4551,110 @@ class _DistanceBadge extends StatelessWidget {
   const _DistanceBadge({
     required this.miles,
     required this.onTap,
+    this.expanded = false,
   });
 
   final double miles;
   final VoidCallback onTap;
+  final bool expanded;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final primaryText = theme.colorScheme.onSurface;
     final secondaryText = theme.colorScheme.onSurfaceVariant;
-    final formattedMiles =
-        miles % 1 == 0 ? miles.toStringAsFixed(0) : miles.toStringAsFixed(1);
+    final formattedMiles = miles.toStringAsFixed(1);
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: _distanceButtonRadius,
         onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeInOut,
+          padding: EdgeInsets.symmetric(
+            vertical: 6,
+            horizontal: expanded ? 12 : 8,
+          ),
           decoration: BoxDecoration(
-            color: _historyButtonBase.withValues(alpha: 0.22),
-            borderRadius: BorderRadius.circular(12),
+            gradient: LinearGradient(
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+              colors: [
+                Colors.black.withValues(alpha: expanded ? 0.08 : 0.16),
+                Colors.black.withValues(alpha: expanded ? 0.2 : 0.3),
+                Colors.black.withValues(alpha: expanded ? 0.08 : 0.16),
+              ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
+            borderRadius: _distanceButtonRadius,
             border: Border.all(
-              color: _historyButtonBase.withValues(alpha: 0.38),
+              color: Colors.white.withValues(alpha: 0.18),
               width: 1.2,
             ),
             boxShadow: [
               BoxShadow(
-                color: _historyButtonBase.withValues(alpha: 0.24),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
               ),
             ],
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                formattedMiles,
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: primaryText,
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeInOut,
+            alignment: Alignment.center,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (expanded) ...[
+                  Text(
+                    'Preferred distance',
+                    style: TextStyle(
+                      fontSize: 10,
+                      letterSpacing: 0.4,
+                      fontWeight: FontWeight.w600,
+                      color: secondaryText,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 4),
+                ],
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.edit,
+                      size: 14,
+                      color: primaryText.withValues(alpha: expanded ? 0.85 : 0.55),
+                    ),
+                    SizedBox(width: expanded ? 6 : 4),
+                    Text(
+                      formattedMiles,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: primaryText,
+                      ),
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      'mi',
+                      style: TextStyle(
+                        fontSize: 10,
+                        letterSpacing: 0.8,
+                        fontWeight: FontWeight.w500,
+                        color: secondaryText,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                'mi',
-                style: TextStyle(
-                  fontSize: 10,
-                  letterSpacing: 0.8,
-                  fontWeight: FontWeight.w500,
-                  color: secondaryText,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -4048,23 +4843,25 @@ class _ToolbarAccentIcon extends StatelessWidget {
 }
 
 class _ToolbarButtonFrame extends StatelessWidget {
-  const _ToolbarButtonFrame({required this.child});
+  const _ToolbarButtonFrame({required this.child, this.borderRadius});
 
   final Widget child;
+  final BorderRadius? borderRadius;
 
   @override
   Widget build(BuildContext context) {
+    final radius = borderRadius ?? _chromeBorderRadius;
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: _chromePanelGradient,
-        borderRadius: _chromeBorderRadius,
+        borderRadius: radius,
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.08),
         ),
         boxShadow: _elevatedShadow,
       ),
       child: ClipRRect(
-        borderRadius: _chromeBorderRadius,
+        borderRadius: radius,
         child: child,
       ),
     );
@@ -4355,6 +5152,20 @@ const Map<String, Map<String, String>> _localizedStrings = {
     'fr': 'Langue',
     'de': 'Sprache',
     'it': 'Lingua'
+  },
+  'settings.buttonScale': {
+    'en': 'Button size',
+    'es': 'Tamano de botones',
+    'fr': 'Taille des boutons',
+    'de': 'Buttongroesse',
+    'it': 'Dimensione pulsanti'
+  },
+  'settings.buttonScaleSubtitle': {
+    'en': 'Adjust the on-map controls.',
+    'es': 'Ajusta los controles del mapa.',
+    'fr': 'Reglez les controles de la carte.',
+    'de': 'Passe die Kartenelemente an.',
+    'it': 'Regola i controlli sulla mappa.'
   },
   'unit.imperial': {
     'en': 'Imperial',
@@ -4852,31 +5663,45 @@ class _MultiToggleTile extends StatelessWidget {
   }
 }
 
-class _RouteZoneHint extends StatelessWidget {
-  const _RouteZoneHint();
+class _ModeHintBanner extends StatelessWidget {
+  const _ModeHintBanner({
+    required this.gradient,
+    required this.icon,
+    required this.text,
+  });
+
+  final LinearGradient gradient;
+  final IconData icon;
+  final String text;
 
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.paddingOf(context).top;
     return IgnorePointer(
       child: Align(
-        alignment: Alignment.topLeft,
+        alignment: Alignment.topCenter,
         child: Container(
-          margin: EdgeInsets.fromLTRB(20, topInset + 12, 20, 20),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          margin: EdgeInsets.fromLTRB(16, topInset + 12, 16, 0),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.55),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            gradient: gradient,
+            borderRadius: _chromeBorderRadius,
+            border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+            boxShadow: _elevatedShadow,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
-            children: const [
-              Icon(Icons.crop_free, size: 18),
-              SizedBox(width: 10),
-              Text(
-                'Drag to draw a Route Zone',
-                style: TextStyle(fontWeight: FontWeight.w600),
+            children: [
+              Icon(icon, size: 18, color: Colors.white),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text(
+                  text,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ],
           ),
@@ -4886,35 +5711,27 @@ class _RouteZoneHint extends StatelessWidget {
   }
 }
 
-class _AvoidAreaHint extends StatelessWidget {
-  const _AvoidAreaHint();
+class _InfoTipRow extends StatelessWidget {
+  const _InfoTipRow({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
-    final topInset = MediaQuery.paddingOf(context).top;
-    return IgnorePointer(
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: Container(
-          margin: EdgeInsets.fromLTRB(20, topInset + 12, 20, 20),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.55),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: Colors.white.withValues(alpha: 0.85)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(height: 1.3),
+            ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              Icon(Icons.block, size: 18),
-              SizedBox(width: 10),
-              Text(
-                'Drag to draw Avoid Areas',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
-        ),
+        ],
       ),
     );
   }
