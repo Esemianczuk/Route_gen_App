@@ -84,6 +84,9 @@ const _elevatedShadow = [
 ];
 const _navEdgeBase = Color(0xFF0A101C);
 const _navCenterBase = Color(0xFF0D3450);
+const _routeZoneAccent = Color(0xFF5C2C92);
+const _routeZoneAccentIcon = Color(0xFFE9D7FF);
+const double _avoidDragActivationDistance = 8;
 
 class RouteGenApp extends StatelessWidget {
   const RouteGenApp({super.key});
@@ -153,6 +156,20 @@ class _HelloScreenState extends State<HelloScreen>
   LatLng? _editDragStartLatLng;
   LatLngBounds? _editDragStartBounds;
   _RouteZoneHandle? _activeHandle;
+  bool _isAvoidAreaMode = false;
+  final List<_AvoidZone> _avoidZones = [];
+  int _avoidZoneCounter = 0;
+  int? _avoidDrawPointerId;
+  LatLng? _avoidDrawStartLatLng;
+  int? _avoidTapPointerId;
+  Offset? _avoidTapStartPosition;
+  int? _avoidEditPointerId;
+  String? _activeAvoidZoneId;
+  String? _pendingAvoidZoneId;
+  _RouteZoneHandle? _activeAvoidHandle;
+  LatLng? _avoidOppositeCorner;
+  LatLng? _avoidDragStartLatLng;
+  LatLngBounds? _avoidDragStartBounds;
   StreamSubscription<MapEvent>? _mapEventSubscription;
 
   @override
@@ -171,7 +188,7 @@ class _HelloScreenState extends State<HelloScreen>
       ..repeat();
     _mapEventSubscription = _mapController.mapEventStream.listen((event) {
       if (!mounted) return;
-      if (_routeZoneBounds != null || _isRouteZoneEditMode) {
+      if (_routeZoneBounds != null || _isRouteZoneEditMode || _isAvoidAreaMode) {
         setState(() {});
       }
     });
@@ -199,6 +216,19 @@ class _HelloScreenState extends State<HelloScreen>
       seedColor: accentColor,
       brightness: Brightness.dark,
     );
+    final bool hideSideToolbar =
+        _isAvoidAreaMode || _isRouteZoneMode || _isRouteZoneEditMode;
+    final bool navSuppressed =
+        _isAvoidAreaMode || _isRouteZoneMode || _isRouteZoneEditMode;
+    final bool isAvoidFocus = _isAvoidAreaMode;
+    final bool isRouteZoneFocus =
+        (_isRouteZoneMode || _isRouteZoneEditMode) && !_isAvoidAreaMode;
+    final Color? focusFrameColor = isAvoidFocus
+        ? _clearButtonBase
+        : (isRouteZoneFocus ? _routeZoneAccent : null);
+    final Color? focusFrameIconColor = isAvoidFocus
+        ? _clearButtonIcon
+        : (isRouteZoneFocus ? _routeZoneAccentIcon : null);
     final themedData = baseTheme.copyWith(
       colorScheme: modeColorScheme,
       scaffoldBackgroundColor: _sherpaBg,
@@ -230,7 +260,11 @@ class _HelloScreenState extends State<HelloScreen>
                 initialCenter: const LatLng(37.7749, -122.4194), // San Francisco for now
                 initialZoom: 12,
                 interactionOptions: InteractionOptions(
-                  flags: _isRouteZoneMode || _isRouteZoneEditMode
+                  flags: (_isRouteZoneMode ||
+                          _isAvoidAreaMode ||
+                          _routeZoneEditPointerId != null ||
+                          _avoidDrawPointerId != null ||
+                          _avoidEditPointerId != null)
                       ? (InteractiveFlag.pinchZoom |
                           InteractiveFlag.pinchMove |
                           InteractiveFlag.doubleTapZoom)
@@ -246,15 +280,41 @@ class _HelloScreenState extends State<HelloScreen>
                   PolygonLayer(
                     polygons: [
                       Polygon(
-                        points: _routeZonePolygonPoints(_routeZoneBounds!),
+                        points: _boundsPolygonPoints(_routeZoneBounds!),
                         color: const Color(0x405C2C92),
                         borderColor: Colors.white.withOpacity(0.9),
                         borderStrokeWidth: 2,
                       ),
                     ],
                   ),
+                if (_avoidZones.isNotEmpty)
+                  PolygonLayer(
+                    polygons: _avoidZones
+                        .map(
+                          (zone) => Polygon(
+                            points: _boundsPolygonPoints(zone.bounds),
+                            color: _clearButtonBase.withValues(alpha: 0.16),
+                            borderColor: _clearButtonBase.withValues(alpha: 0.85),
+                            borderStrokeWidth: 1.6,
+                          ),
+                        )
+                        .toList(),
+                  ),
               ],
             ),
+            if (focusFrameColor != null)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: focusFrameColor.withValues(alpha: 0.9),
+                        width: 4,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             Positioned(
               top: 0,
               left: 0,
@@ -278,133 +338,51 @@ class _HelloScreenState extends State<HelloScreen>
             ),
             Align(
               alignment: Alignment.centerRight,
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 16, top: 14, bottom: 14),
-                  child: ConstrainedBox(
-                    key: const ValueKey('actions-toolbar'),
-                    constraints: const BoxConstraints(
-                      minWidth: 48,
-                      maxWidth: 60,
-                    ),
+              child: AnimatedOpacity(
+                opacity: hideSideToolbar ? 0 : 1,
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeInOut,
+                child: IgnorePointer(
+                  ignoring: hideSideToolbar,
+                  child: SafeArea(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Tooltip(
-                            message: 'Preferred distance',
-                            child: _ToolbarButtonFrame(
-                              child: _DistanceBadge(
-                                miles: _preferredMiles,
-                                accentColor: accentColor,
-                                onTap: () => _openDistanceSheet(),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                          Tooltip(
-                            message: _isBikeMode ? 'Switch to running' : 'Switch to biking',
-                            child: _ToolbarButtonFrame(
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(12),
-                                  onTap: () {
-                                    setState(() {
-                                      _isBikeMode = !_isBikeMode;
-                                    });
-                                  },
-                                  child: Container(
-                                    key: const ValueKey('mode-toggle-button'),
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      color: accentColor.withValues(alpha: 0.16),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: accentColor.withValues(alpha: 0.35),
-                                        width: 1.2,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: accentColor.withValues(alpha: 0.18),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 4),
-                                        ),
-                                      ],
-                                    ),
-                                    child: Icon(
-                                      _isBikeMode ? Icons.directions_bike : Icons.directions_run,
-                                      size: 18,
-                                    ),
+                      padding: const EdgeInsets.only(right: 16, top: 14, bottom: 14),
+                      child: ConstrainedBox(
+                        key: const ValueKey('actions-toolbar'),
+                        constraints: const BoxConstraints(
+                          minWidth: 48,
+                          maxWidth: 60,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Tooltip(
+                                message: 'Preferred distance',
+                                child: _ToolbarButtonFrame(
+                                  child: _DistanceBadge(
+                                    miles: _preferredMiles,
+                                    onTap: () => _openDistanceSheet(),
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Tooltip(
-                            message: 'Search routes or places',
-                            child: _ToolbarButtonFrame(
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(16),
-                                  onTap: _openSearchSheet,
-                                  child: Container(
-                                    key: const ValueKey('open-search-button'),
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      color: accentColor.withValues(alpha: 0.16),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: accentColor.withValues(alpha: 0.4),
-                                        width: 1.2,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: accentColor.withValues(alpha: 0.2),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 4),
-                                        ),
-                                      ],
-                                    ),
-                                    child: Icon(
-                                      Icons.search,
-                                      color: Theme.of(context).colorScheme.onSurface,
-                                      size: 18,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          MenuAnchor(
-                            controller: _layerMenuController,
-                            alignmentOffset: const Offset(-12, 8),
-                            menuChildren: _layerOptions
-                                .map(
-                                  (layer) => MenuItemButton(
-                                    onPressed: () => _layerMenuController.close(),
-                                    child: Text(layer),
-                                  ),
-                                )
-                                .toList(),
-                            builder: (context, controller, child) {
-                              return Tooltip(
-                                message: 'Layer controls',
+                              const SizedBox(height: 32),
+                              Tooltip(
+                                message: _isBikeMode ? 'Switch to running' : 'Switch to biking',
                                 child: _ToolbarButtonFrame(
                                   child: Material(
                                     color: Colors.transparent,
                                     child: InkWell(
                                       borderRadius: BorderRadius.circular(12),
                                       onTap: () {
-                                        controller.isOpen ? controller.close() : controller.open();
+                                        setState(() {
+                                          _isBikeMode = !_isBikeMode;
+                                        });
                                       },
                                       child: Container(
-                                        key: const ValueKey('layer-menu-button'),
+                                        key: const ValueKey('mode-toggle-button'),
                                         padding: const EdgeInsets.all(6),
                                         decoration: BoxDecoration(
                                           color: accentColor.withValues(alpha: 0.16),
@@ -421,200 +399,289 @@ class _HelloScreenState extends State<HelloScreen>
                                             ),
                                           ],
                                         ),
-                                        child: const Icon(Icons.layers_outlined, size: 18),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(height: 32),
-                          Tooltip(
-                            message: 'Undo last change',
-                            child: _ToolbarButtonFrame(
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(12),
-                                  onTap: () {
-                                    // TODO: hook up undo stack
-                                  },
-                                  child: Container(
-                                    key: const ValueKey('undo-button'),
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      color: _historyButtonBase.withValues(alpha: 0.22),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: _historyButtonBase.withValues(alpha: 0.38),
-                                        width: 1.2,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: _historyButtonBase.withValues(alpha: 0.24),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 4),
+                                        child: Icon(
+                                          _isBikeMode ? Icons.directions_bike : Icons.directions_run,
+                                          size: 18,
                                         ),
-                                      ],
-                                    ),
-                                    child: const Icon(
-                                      Icons.undo,
-                                      size: 18,
-                                      color: _historyButtonIcon,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Tooltip(
-                            message: 'Redo change',
-                            child: _ToolbarButtonFrame(
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(12),
-                                  onTap: () {
-                                    // TODO: hook up redo stack
-                                  },
-                                  child: Container(
-                                    key: const ValueKey('redo-button'),
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      color: _historyButtonBase.withValues(alpha: 0.22),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: _historyButtonBase.withValues(alpha: 0.38),
-                                        width: 1.2,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: _historyButtonBase.withValues(alpha: 0.24),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 4),
+                              const SizedBox(height: 6),
+                              Tooltip(
+                                message: 'Search routes or places',
+                                child: _ToolbarButtonFrame(
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(16),
+                                      onTap: _openSearchSheet,
+                                      child: Container(
+                                        key: const ValueKey('open-search-button'),
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: accentColor.withValues(alpha: 0.16),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: accentColor.withValues(alpha: 0.4),
+                                            width: 1.2,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: accentColor.withValues(alpha: 0.2),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 4),
+                                            ),
+                                          ],
                                         ),
-                                      ],
-                                    ),
-                                    child: const Icon(
-                                      Icons.redo,
-                                      size: 18,
-                                      color: _historyButtonIcon,
+                                        child: Icon(
+                                          Icons.search,
+                                          color: Theme.of(context).colorScheme.onSurface,
+                                          size: 18,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                          Tooltip(
-                            message: 'Clear current route',
-                            child: _ToolbarButtonFrame(
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(12),
-                                  onTap: () {
-                                    // TODO: implement clear route
-                                  },
-                                  child: Container(
-                                    key: const ValueKey('clear-button'),
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      color: _clearButtonBase.withValues(alpha: 0.2),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: _clearButtonBase.withValues(alpha: 0.38),
-                                        width: 1.2,
+                              const SizedBox(height: 6),
+                              MenuAnchor(
+                                controller: _layerMenuController,
+                                alignmentOffset: const Offset(-12, 8),
+                                menuChildren: _layerOptions
+                                    .map(
+                                      (layer) => MenuItemButton(
+                                        onPressed: () => _layerMenuController.close(),
+                                        child: Text(layer),
                                       ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: _clearButtonBase.withValues(alpha: 0.22),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 4),
+                                    )
+                                    .toList(),
+                                builder: (context, controller, child) {
+                                  return Tooltip(
+                                    message: 'Layer controls',
+                                    child: _ToolbarButtonFrame(
+                                      child: Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(12),
+                                          onTap: () {
+                                            controller.isOpen ? controller.close() : controller.open();
+                                          },
+                                          child: Container(
+                                            key: const ValueKey('layer-menu-button'),
+                                            padding: const EdgeInsets.all(6),
+                                            decoration: BoxDecoration(
+                                              color: accentColor.withValues(alpha: 0.16),
+                                              borderRadius: BorderRadius.circular(12),
+                                              border: Border.all(
+                                                color: accentColor.withValues(alpha: 0.35),
+                                                width: 1.2,
+                                              ),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: accentColor.withValues(alpha: 0.18),
+                                                  blurRadius: 8,
+                                                  offset: const Offset(0, 4),
+                                                ),
+                                              ],
+                                            ),
+                                            child: const Icon(Icons.layers_outlined, size: 18),
+                                          ),
                                         ),
-                                      ],
+                                      ),
                                     ),
-                                    child: const Icon(
-                                      Icons.close,
-                                      size: 18,
-                                      color: _clearButtonIcon,
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 32),
+                              Tooltip(
+                                message: 'Undo last change',
+                                child: _ToolbarButtonFrame(
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(12),
+                                      onTap: () {
+                                        // TODO: hook up undo stack
+                                      },
+                                      child: Container(
+                                        key: const ValueKey('undo-button'),
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: _historyButtonBase.withValues(alpha: 0.22),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: _historyButtonBase.withValues(alpha: 0.38),
+                                            width: 1.2,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: _historyButtonBase.withValues(alpha: 0.24),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 4),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(
+                                          Icons.undo,
+                                          size: 18,
+                                          color: _historyButtonIcon,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Tooltip(
-                            message: 'Toolbar settings',
-                            child: _ToolbarButtonFrame(
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(12),
-                                  onTap: () {
-                                    // TODO: open toolbar settings
-                                  },
-                                  child: Container(
-                                    key: const ValueKey('settings-button'),
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      color: accentColor.withValues(alpha: 0.16),
+                              const SizedBox(height: 6),
+                              Tooltip(
+                                message: 'Redo change',
+                                child: _ToolbarButtonFrame(
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
                                       borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: accentColor.withValues(alpha: 0.35),
-                                        width: 1.2,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: accentColor.withValues(alpha: 0.18),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 4),
+                                      onTap: () {
+                                        // TODO: hook up redo stack
+                                      },
+                                      child: Container(
+                                        key: const ValueKey('redo-button'),
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: _historyButtonBase.withValues(alpha: 0.22),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: _historyButtonBase.withValues(alpha: 0.38),
+                                            width: 1.2,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: _historyButtonBase.withValues(alpha: 0.24),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 4),
+                                            ),
+                                          ],
                                         ),
-                                      ],
+                                        child: const Icon(
+                                          Icons.redo,
+                                          size: 18,
+                                          color: _historyButtonIcon,
+                                        ),
+                                      ),
                                     ),
-                                    child: const Icon(Icons.settings, size: 18),
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Tooltip(
-                            message: 'View analytics',
-                            child: _ToolbarButtonFrame(
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(12),
-                                  onTap: _openAnalyticsSheet,
-                                  child: Container(
-                                    key: const ValueKey('stats-button'),
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      color: accentColor.withValues(alpha: 0.16),
+                              const SizedBox(height: 32),
+                              Tooltip(
+                                message: 'Clear current route',
+                                child: _ToolbarButtonFrame(
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
                                       borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: accentColor.withValues(alpha: 0.35),
-                                        width: 1.2,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: accentColor.withValues(alpha: 0.18),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 4),
+                                      onTap: () {
+                                        // TODO: implement clear route
+                                      },
+                                      child: Container(
+                                        key: const ValueKey('clear-button'),
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: _clearButtonBase.withValues(alpha: 0.2),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: _clearButtonBase.withValues(alpha: 0.38),
+                                            width: 1.2,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: _clearButtonBase.withValues(alpha: 0.22),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 4),
+                                            ),
+                                          ],
                                         ),
-                                      ],
+                                        child: const Icon(
+                                          Icons.close,
+                                          size: 18,
+                                          color: _clearButtonIcon,
+                                        ),
+                                      ),
                                     ),
-                                    child: const Icon(Icons.query_stats, size: 18),
                                   ),
                                 ),
                               ),
-                            ),
+                              const SizedBox(height: 6),
+                              Tooltip(
+                                message: 'Toolbar settings',
+                                child: _ToolbarButtonFrame(
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(12),
+                                      onTap: () {
+                                        // TODO: open toolbar settings
+                                      },
+                                      child: Container(
+                                        key: const ValueKey('settings-button'),
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: accentColor.withValues(alpha: 0.16),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: accentColor.withValues(alpha: 0.35),
+                                            width: 1.2,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: accentColor.withValues(alpha: 0.18),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 4),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(Icons.settings, size: 18),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Tooltip(
+                                message: 'View analytics',
+                                child: _ToolbarButtonFrame(
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(12),
+                                      onTap: _openAnalyticsSheet,
+                                      child: Container(
+                                        key: const ValueKey('stats-button'),
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: accentColor.withValues(alpha: 0.16),
+                                          borderRadius: BorderRadius.circular(12),
+                                          border: Border.all(
+                                            color: accentColor.withValues(alpha: 0.35),
+                                            width: 1.2,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: accentColor.withValues(alpha: 0.18),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 4),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(Icons.query_stats, size: 18),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -634,19 +701,19 @@ class _HelloScreenState extends State<HelloScreen>
               ),
             if (_isRouteZoneEditMode && _routeZoneBounds != null)
               _buildRouteZoneEditOverlay(),
-            if (_routeZoneBounds != null && !_isRouteZoneMode)
-              Positioned(
-                left: 16,
-                bottom: MediaQuery.of(context).padding.bottom + 96,
-                child: FilledButton.icon(
-                  onPressed:
-                      _isRouteZoneEditMode ? null : _enterRouteZoneEditMode,
-                  icon: const Icon(Icons.edit),
-                  label: Text(
-                    _isRouteZoneEditMode ? 'Editing zone' : 'Edit zone',
-                  ),
-                ),
-              ),
+            if (_isAvoidAreaMode) _buildAvoidAreaOverlay(),
+            if (!_isAvoidAreaMode && _avoidZones.isNotEmpty)
+              _buildAvoidZoneCloseOnlyOverlay(),
+            if (_routeZoneBounds != null &&
+                !_isRouteZoneMode &&
+                !_isRouteZoneEditMode &&
+                !_isAvoidAreaMode)
+              _buildRouteZoneEditButton() ?? const SizedBox.shrink(),
+            if (_routeZoneBounds != null &&
+                !_isRouteZoneMode &&
+                !_isRouteZoneEditMode &&
+                !_isAvoidAreaMode)
+              _buildRouteZoneStaticCloseButton() ?? const SizedBox.shrink(),
           ],
         ),
         bottomNavigationBar: SafeArea(
@@ -679,46 +746,124 @@ class _HelloScreenState extends State<HelloScreen>
                         ),
                         boxShadow: _elevatedShadow,
                       ),
-                      child: NavigationBarTheme(
-                        data: NavigationBarThemeData(
-                          height: 66,
-                          indicatorShape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          indicatorColor: Colors.transparent,
-                          overlayColor: WidgetStateProperty.resolveWith(
-                            (states) => states.contains(WidgetState.pressed)
-                                ? accentColor.withValues(alpha: 0.18)
-                                : Colors.transparent,
-                          ),
-                          labelTextStyle:
-                              WidgetStateProperty.resolveWith((states) {
-                            final selected = states.contains(WidgetState.selected);
-                            return TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 11,
-                              letterSpacing: 0.2,
-                              color: selected
-                                  ? (isGenerateSelected ? Colors.white : accentColor)
-                                  : Colors.white.withValues(alpha: 0.8),
-                            );
-                          }),
-                          iconTheme: WidgetStateProperty.resolveWith(
-                            (states) => IconThemeData(
-                              color: states.contains(WidgetState.selected)
-                                  ? (isGenerateSelected ? Colors.white : accentColor)
-                                  : Colors.white.withValues(alpha: 0.78),
-                              size: 22,
-                            ),
-                          ),
-                        ),
-                        child: NavigationBar(
-                        backgroundColor: Colors.transparent,
-                        surfaceTintColor: Colors.transparent,
-                        elevation: 0,
-                        selectedIndex: _selectedToolIndex,
-                        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+                      child: navSuppressed
+                          ? SizedBox(
+                              height: 66,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: (isAvoidFocus
+                                          ? _clearButtonBase
+                                          : _routeZoneAccent)
+                                      .withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: (isAvoidFocus
+                                            ? _clearButtonBase
+                                            : _routeZoneAccent)
+                                        .withValues(alpha: 0.38),
+                                    width: 1.2,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: (isAvoidFocus
+                                              ? _clearButtonBase
+                                              : _routeZoneAccent)
+                                          .withValues(alpha: 0.22),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: TextButton.icon(
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: focusFrameIconColor ?? Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 28,
+                                      vertical: 12,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(18),
+                                    ),
+                                  ),
+                                  onPressed: isAvoidFocus
+                                      ? _exitAvoidAreaMode
+                                      : _exitRouteZoneEditMode,
+                                  icon: const Icon(Icons.close),
+                                  label: Text(
+                                    isAvoidFocus ? 'Exit edit mode' : 'Exit zone mode',
+                                  ),
+                                ),
+                              ),
+                            )
+                          : NavigationBarTheme(
+                              data: NavigationBarThemeData(
+                                height: 66,
+                                indicatorShape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                indicatorColor: Colors.transparent,
+                                overlayColor: WidgetStateProperty.resolveWith(
+                                  (states) => states.contains(WidgetState.pressed)
+                                      ? accentColor.withValues(alpha: 0.18)
+                                      : Colors.transparent,
+                                ),
+                                labelTextStyle:
+                                    WidgetStateProperty.resolveWith((states) {
+                                  final selected =
+                                      states.contains(WidgetState.selected);
+                                  return TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 11,
+                                    letterSpacing: 0.2,
+                                    color: selected
+                                        ? (isGenerateSelected
+                                            ? Colors.white
+                                            : accentColor)
+                                        : Colors.white.withValues(alpha: 0.8),
+                                  );
+                                }),
+                                iconTheme: WidgetStateProperty.resolveWith(
+                                  (states) => IconThemeData(
+                                    color: states.contains(WidgetState.selected)
+                                        ? (isGenerateSelected
+                                            ? Colors.white
+                                            : accentColor)
+                                        : Colors.white.withValues(alpha: 0.78),
+                                    size: 22,
+                                  ),
+                                ),
+                              ),
+                              child: NavigationBar(
+                                backgroundColor: Colors.transparent,
+                                surfaceTintColor: Colors.transparent,
+                                elevation: 0,
+                                selectedIndex: _selectedToolIndex,
+                                labelBehavior:
+                                    NavigationDestinationLabelBehavior.alwaysShow,
                         onDestinationSelected: (index) {
+                          if (index == 1) {
+                            if (_isAvoidAreaMode) {
+                              _exitAvoidAreaMode();
+                            } else {
+                              _enterAvoidAreaMode();
+                            }
+                            return;
+                          }
+                          if (_isAvoidAreaMode) {
+                            _exitAvoidAreaMode();
+                          }
+                          if (index == 3) {
+                            if (_isRouteZoneMode) {
+                              _cancelRouteZoneMode();
+                              return;
+                            }
+                            _beginRouteZoneSelection();
+                            setState(() => _selectedToolIndex = index);
+                            return;
+                          }
+                          if (_isRouteZoneMode) {
+                            _cancelRouteZoneMode();
+                          }
                           if (index == 0) {
                             _openProfileSheet();
                             return;
@@ -727,66 +872,61 @@ class _HelloScreenState extends State<HelloScreen>
                             setState(() => _selectedToolIndex = index);
                             return;
                           }
-                          if (index == 3) {
-                            _beginRouteZoneSelection();
-                            setState(() => _selectedToolIndex = index);
-                            return;
-                          }
                           if (index == 4) {
                             // TODO: Download action
                           }
                         },
-                        destinations: [
-                          const NavigationDestination(
-                            icon: Icon(Icons.tune_outlined),
-                            selectedIcon: Icon(Icons.tune),
-                            label: 'Profile',
-                          ),
-                          const NavigationDestination(
-                            icon: _ToolbarAccentIcon(
-                              iconData: Icons.block_outlined,
-                              accentColor: _clearButtonBase,
-                              iconColor: _clearButtonIcon,
+                                destinations: [
+                                  const NavigationDestination(
+                                    icon: Icon(Icons.tune_outlined),
+                                    selectedIcon: Icon(Icons.tune),
+                                    label: 'Profile',
+                                  ),
+                                  const NavigationDestination(
+                                    icon: _ToolbarAccentIcon(
+                                      iconData: Icons.block_outlined,
+                                      accentColor: _clearButtonBase,
+                                      iconColor: _clearButtonIcon,
+                                    ),
+                                    selectedIcon: _ToolbarAccentIcon(
+                                      iconData: Icons.block,
+                                      accentColor: _clearButtonBase,
+                                      iconColor: _clearButtonIcon,
+                                    ),
+                                    label: 'Avoid area',
+                                  ),
+                                  NavigationDestination(
+                                    icon: _ToolbarAccentIcon(
+                                      iconData: Icons.play_arrow_outlined,
+                                      accentColor: accentColor,
+                                    ),
+                                    selectedIcon: _ToolbarAccentIcon(
+                                      iconData: Icons.play_arrow,
+                                      accentColor: accentColor,
+                                    ),
+                                    label: 'Generate',
+                                  ),
+                                  const NavigationDestination(
+                                    icon: _ToolbarAccentIcon(
+                                      iconData: Icons.crop_free,
+                                      accentColor: Color(0xFF5C2C92),
+                                      iconColor: Color(0xFFE9D7FF),
+                                    ),
+                                    selectedIcon: _ToolbarAccentIcon(
+                                      iconData: Icons.crop_square,
+                                      accentColor: Color(0xFF5C2C92),
+                                      iconColor: Color(0xFFE9D7FF),
+                                    ),
+                                    label: 'Route Zone',
+                                  ),
+                                  const NavigationDestination(
+                                    icon: Icon(Icons.download_outlined),
+                                    selectedIcon: Icon(Icons.download),
+                                    label: 'Download',
+                                  ),
+                                ],
+                              ),
                             ),
-                            selectedIcon: _ToolbarAccentIcon(
-                              iconData: Icons.block,
-                              accentColor: _clearButtonBase,
-                              iconColor: _clearButtonIcon,
-                            ),
-                            label: 'Avoid area',
-                          ),
-                          NavigationDestination(
-                            icon: _ToolbarAccentIcon(
-                              iconData: Icons.play_arrow_outlined,
-                              accentColor: accentColor,
-                            ),
-                            selectedIcon: _ToolbarAccentIcon(
-                              iconData: Icons.play_arrow,
-                              accentColor: accentColor,
-                            ),
-                            label: 'Generate',
-                          ),
-                          const NavigationDestination(
-                            icon: _ToolbarAccentIcon(
-                              iconData: Icons.crop_free,
-                              accentColor: Color(0xFF5C2C92),
-                              iconColor: Color(0xFFE9D7FF),
-                            ),
-                            selectedIcon: _ToolbarAccentIcon(
-                              iconData: Icons.crop_square,
-                              accentColor: Color(0xFF5C2C92),
-                              iconColor: Color(0xFFE9D7FF),
-                            ),
-                            label: 'Route Zone',
-                          ),
-                          const NavigationDestination(
-                            icon: Icon(Icons.download_outlined),
-                            selectedIcon: Icon(Icons.download),
-                            label: 'Download',
-                          ),
-                        ],
-                        ),
-                      ),
                     ),
                   ),
                 ),
@@ -1639,11 +1779,13 @@ extension on _HelloScreenState {
   Widget _buildRouteZoneEditOverlay() {
     final handles = _currentHandleOffsets();
     final saveButton = _buildRouteZoneSaveButton();
+    final closeButton = _buildRouteZoneOverlayCloseButton();
     return Positioned.fill(
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
           Listener(
-            behavior: HitTestBehavior.opaque,
+            behavior: HitTestBehavior.translucent,
             onPointerDown: _handleRouteZoneEditPointerDown,
             onPointerMove: _handleRouteZoneEditPointerMove,
             onPointerUp: _handleRouteZoneEditPointerEnd,
@@ -1655,11 +1797,15 @@ extension on _HelloScreenState {
               left: entry.value.dx - 14,
               top: entry.value.dy - 14,
               child: IgnorePointer(
-                child: _RouteZoneHandleDot(active: _activeHandle == entry.key),
+                child: _RouteZoneHandleDot(
+                  active: _activeHandle == entry.key,
+                  color: const Color(0xFF5C2C92),
+                ),
               ),
             ),
           ),
           if (saveButton != null) saveButton,
+          if (closeButton != null) closeButton,
         ],
       ),
     );
@@ -1673,9 +1819,49 @@ extension on _HelloScreenState {
       (bounds.east + bounds.west) / 2,
     );
     final centerOffset = _offsetFromLatLng(centerLatLng);
-    final button = FilledButton(
-      onPressed: _exitRouteZoneEditMode,
-      child: const Text('Save'),
+    final accentColor = _isBikeMode ? _bikeAccent : _runAccent;
+    final iconColor = Colors.white;
+    final button = _ToolbarButtonFrame(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: _exitRouteZoneEditMode,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: accentColor.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: accentColor.withValues(alpha: 0.35),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: accentColor.withValues(alpha: 0.18),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.check, size: 18, color: iconColor),
+                const SizedBox(width: 8),
+                Text(
+                  'Save',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: iconColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
     if (centerOffset == null) {
       return Align(child: button);
@@ -1683,6 +1869,178 @@ extension on _HelloScreenState {
     return Positioned(
       left: centerOffset.dx - 36,
       top: centerOffset.dy - 20,
+      child: button,
+    );
+  }
+
+  Widget? _buildRouteZoneOverlayCloseButton() {
+    final bounds = _routeZoneBounds;
+    if (bounds == null) return null;
+    final centerLatLng = LatLng(
+      (bounds.north + bounds.south) / 2,
+      (bounds.east + bounds.west) / 2,
+    );
+    final centerOffset = _offsetFromLatLng(centerLatLng);
+    final button = _ToolbarButtonFrame(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: _clearRouteZone,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: _clearButtonBase.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _clearButtonBase.withValues(alpha: 0.38),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: _clearButtonBase.withValues(alpha: 0.22),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.close, size: 18, color: _clearButtonIcon),
+                SizedBox(width: 8),
+                Text(
+                  'Clear',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: _clearButtonIcon,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (centerOffset == null) {
+      return Align(
+        alignment: Alignment.center,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 40),
+          child: button,
+        ),
+      );
+    }
+    return Positioned(
+      left: centerOffset.dx - 40,
+      top: centerOffset.dy + 24,
+      child: button,
+    );
+  }
+
+Widget? _buildRouteZoneStaticCloseButton() {
+    final bounds = _routeZoneBounds;
+    if (bounds == null) return null;
+    final topRight = _offsetFromLatLng(LatLng(bounds.north, bounds.east));
+    final button = _ToolbarButtonFrame(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: _clearRouteZone,
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: _clearButtonBase.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _clearButtonBase.withValues(alpha: 0.38),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: _clearButtonBase.withValues(alpha: 0.22),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Icon(Icons.close, size: 18, color: _clearButtonIcon),
+          ),
+        ),
+      ),
+    );
+    if (topRight == null) {
+      return Align(
+        alignment: Alignment.topRight,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: button,
+        ),
+      );
+    }
+    return Positioned(
+      left: topRight.dx - 12,
+      top: topRight.dy - 20,
+      child: button,
+    );
+  }
+
+  Widget? _buildRouteZoneEditButton() {
+    final bounds = _routeZoneBounds;
+    if (bounds == null) return null;
+    final bottomLeft = _offsetFromLatLng(LatLng(bounds.south, bounds.west));
+    final button = SizedBox(
+      width: 34,
+      height: 34,
+      child: _ToolbarButtonFrame(
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: _isRouteZoneEditMode
+                ? _exitRouteZoneEditMode
+                : _enterRouteZoneEditMode,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: _routeZoneAccent.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _routeZoneAccent.withValues(alpha: 0.4),
+                  width: 1.2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: _routeZoneAccent.withValues(alpha: 0.18),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Icon(
+                Icons.edit,
+                size: 18,
+                color: _routeZoneAccentIcon,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (bottomLeft == null) {
+      return Align(
+        alignment: Alignment.bottomLeft,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: button,
+        ),
+      );
+    }
+    return Positioned(
+      left: bottomLeft.dx - 12,
+      top: bottomLeft.dy - 8,
       child: button,
     );
   }
@@ -1701,7 +2059,217 @@ extension on _HelloScreenState {
     return map;
   }
 
-  List<LatLng> _routeZonePolygonPoints(LatLngBounds bounds) {
+  Widget _buildAvoidAreaOverlay() {
+    final handleOffsets = _avoidHandleOffsets();
+    return Positioned.fill(
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: _handleAvoidPointerDown,
+            onPointerMove: _handleAvoidPointerMove,
+            onPointerUp: _handleAvoidPointerEnd,
+            onPointerCancel: _handleAvoidPointerEnd,
+            child: const SizedBox.expand(),
+          ),
+          if (_avoidZones.isEmpty) const _AvoidAreaHint(),
+          for (final entry in handleOffsets.entries)
+            for (final handle in entry.value.entries)
+              Positioned(
+                left: handle.value.dx - 14,
+                top: handle.value.dy - 14,
+                child: IgnorePointer(
+                  child: _RouteZoneHandleDot(
+                    active: _activeAvoidZoneId == entry.key &&
+                        _activeAvoidHandle == handle.key,
+                    color: _clearButtonBase,
+                  ),
+                ),
+              ),
+          ..._avoidZones.map(_buildAvoidZoneControls),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAvoidZoneCloseOnlyOverlay() {
+    return Positioned.fill(
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          for (final zone in _avoidZones)
+            ..._buildAvoidZoneStaticButtons(zone),
+        ],
+      ),
+    );
+  }
+
+  Map<String, Map<_RouteZoneHandle, Offset>> _avoidHandleOffsets() {
+    final map = <String, Map<_RouteZoneHandle, Offset>>{};
+    for (final zone in _avoidZones) {
+      final handles = <_RouteZoneHandle, Offset>{};
+      for (final handle in _RouteZoneHandle.values) {
+        final offset = _offsetFromLatLng(_cornerLatLng(handle, zone.bounds));
+        if (offset != null) {
+          handles[handle] = offset;
+        }
+      }
+      if (handles.isNotEmpty) {
+        map[zone.id] = handles;
+      }
+    }
+    return map;
+  }
+
+  Widget _buildAvoidZoneControls(_AvoidZone zone) {
+    final centerLatLng = LatLng(
+      (zone.bounds.north + zone.bounds.south) / 2,
+      (zone.bounds.east + zone.bounds.west) / 2,
+    );
+    final centerOffset = _offsetFromLatLng(centerLatLng);
+    final isActive = _isAvoidAreaMode && _activeAvoidZoneId == zone.id;
+    final showLabels = isActive;
+    final accentColor = _isBikeMode ? _bikeAccent : _runAccent;
+    final editButton = _buildZoneActionButton(
+      color: isActive ? accentColor : _clearButtonBase,
+      iconColor: isActive ? Colors.white : _clearButtonIcon,
+      icon: isActive ? Icons.check : Icons.edit,
+      label: showLabels ? 'Save' : null,
+      onTap: () {
+        if (isActive) {
+          _exitAvoidAreaMode();
+        } else {
+          _enterAvoidAreaMode(zone.id);
+        }
+      },
+    );
+    final closeButton = _buildZoneActionButton(
+      color: _clearButtonBase,
+      iconColor: _clearButtonIcon,
+      icon: Icons.close,
+      label: showLabels ? 'Clear' : null,
+      onTap: () {
+        _removeAvoidZone(zone.id);
+        _exitAvoidAreaMode();
+      },
+    );
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        editButton,
+        const SizedBox(height: 6),
+        closeButton,
+      ],
+    );
+    if (centerOffset == null) {
+      return Align(child: content);
+    }
+    return Positioned(
+      left: centerOffset.dx,
+      top: centerOffset.dy,
+      child: FractionalTranslation(
+        translation: const Offset(-0.5, -0.5),
+        child: content,
+      ),
+    );
+  }
+
+  List<Widget> _buildAvoidZoneStaticButtons(_AvoidZone zone) {
+    final bounds = zone.bounds;
+    final topRight = _offsetFromLatLng(LatLng(bounds.north, bounds.east));
+    final bottomLeft = _offsetFromLatLng(LatLng(bounds.south, bounds.west));
+    if (topRight == null || bottomLeft == null) return const [];
+    final closeButton = _buildZoneActionButton(
+      color: _clearButtonBase,
+      iconColor: _clearButtonIcon,
+      icon: Icons.close,
+      onTap: () {
+        _removeAvoidZone(zone.id);
+      },
+    );
+    final accentColor = _isBikeMode ? _bikeAccent : _runAccent;
+    final editButton = _buildZoneActionButton(
+      color: accentColor,
+      iconColor: Colors.white,
+      icon: Icons.edit,
+      onTap: () => _enterAvoidAreaMode(zone.id),
+    );
+    return [
+      Positioned(
+        left: topRight.dx - 12,
+        top: topRight.dy - 20,
+        child: closeButton,
+      ),
+      Positioned(
+        left: bottomLeft.dx - 12,
+        top: bottomLeft.dy - 8,
+        child: editButton,
+      ),
+    ];
+  }
+
+  Widget _buildZoneActionButton({
+    required Color color,
+    required Color iconColor,
+    required IconData icon,
+    required VoidCallback onTap,
+    String? label,
+  }) {
+    final hasLabel = label != null;
+    return SizedBox(
+      width: hasLabel ? null : 34,
+      height: hasLabel ? null : 34,
+      child: _ToolbarButtonFrame(
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: onTap,
+            child: Container(
+              padding: hasLabel
+                  ? const EdgeInsets.symmetric(horizontal: 14, vertical: 8)
+                  : const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: color.withValues(alpha: 0.38),
+                  width: 1.2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.22),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: hasLabel
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(icon, size: 16, color: iconColor),
+                        const SizedBox(width: 8),
+                        Text(
+                          label!,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color: iconColor,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Icon(icon, size: 16, color: iconColor),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<LatLng> _boundsPolygonPoints(LatLngBounds bounds) {
     final northWest = LatLng(bounds.north, bounds.west);
     final northEast = LatLng(bounds.north, bounds.east);
     final southEast = LatLng(bounds.south, bounds.east);
@@ -1781,20 +2349,26 @@ extension on _HelloScreenState {
   void _handleRouteZoneEditPointerDown(PointerDownEvent event) {
     if (!_isRouteZoneEditMode || _routeZoneBounds == null) return;
     if (_routeZoneEditPointerId != null) return;
-    _routeZoneEditPointerId = event.pointer;
     final handle = _hitTestHandle(event.localPosition);
     if (handle != null) {
+      _routeZoneEditPointerId = event.pointer;
       _activeHandle = handle;
       _routeZoneOppositeCorner =
           _cornerLatLng(_oppositeHandle(handle), _routeZoneBounds!);
       _editDragStartLatLng = null;
       _editDragStartBounds = null;
-    } else {
-      _activeHandle = null;
-      _routeZoneOppositeCorner = null;
-      _editDragStartLatLng = _latLngFromOffset(event.localPosition);
-      _editDragStartBounds = _routeZoneBounds;
+      return;
     }
+    final hitLatLng = _latLngFromOffset(event.localPosition);
+    if (hitLatLng == null ||
+        !_boundsContainsPoint(_routeZoneBounds!, hitLatLng)) {
+      return;
+    }
+    _routeZoneEditPointerId = event.pointer;
+    _activeHandle = null;
+    _routeZoneOppositeCorner = null;
+    _editDragStartLatLng = hitLatLng;
+    _editDragStartBounds = _routeZoneBounds;
   }
 
   void _handleRouteZoneEditPointerMove(PointerMoveEvent event) {
@@ -1889,6 +2463,273 @@ extension on _HelloScreenState {
       _routeZoneOppositeCorner = null;
       _editDragStartLatLng = null;
       _editDragStartBounds = null;
+    });
+  }
+
+  void _cancelRouteZoneMode() {
+    if (!_isRouteZoneMode) return;
+    setState(() {
+      _isRouteZoneMode = false;
+      _selectedToolIndex = 2;
+      _routeZonePointerId = null;
+      _routeZoneStartLatLng = null;
+    });
+  }
+
+  void _clearRouteZone() {
+    setState(() {
+      _routeZoneBounds = null;
+      _isRouteZoneMode = false;
+      _isRouteZoneEditMode = false;
+      _routeZonePointerId = null;
+      _routeZoneStartLatLng = null;
+      _routeZoneEditPointerId = null;
+      _activeHandle = null;
+      _routeZoneOppositeCorner = null;
+      _editDragStartLatLng = null;
+      _editDragStartBounds = null;
+      _selectedToolIndex = 2;
+    });
+  }
+
+  void _enterAvoidAreaMode([String? focusZoneId]) {
+    setState(() {
+      _selectedToolIndex = 1;
+      _isAvoidAreaMode = true;
+      _avoidDrawPointerId = null;
+      _avoidDrawStartLatLng = null;
+      _avoidTapPointerId = null;
+      _avoidTapStartPosition = null;
+      _pendingAvoidZoneId = null;
+      _avoidEditPointerId = null;
+      _activeAvoidHandle = null;
+      _avoidOppositeCorner = null;
+      _avoidDragStartLatLng = null;
+      _avoidDragStartBounds = null;
+      final fallbackZone =
+          _avoidZones.isNotEmpty ? _avoidZones.last.id : null;
+      if (focusZoneId != null &&
+          _avoidZones.any((zone) => zone.id == focusZoneId)) {
+        _activeAvoidZoneId = focusZoneId;
+      } else {
+        _activeAvoidZoneId ??= fallbackZone;
+      }
+    });
+  }
+
+  void _exitAvoidAreaMode() {
+    if (!_isAvoidAreaMode) return;
+    setState(() {
+      _isAvoidAreaMode = false;
+      _selectedToolIndex = 2;
+      _avoidDrawPointerId = null;
+      _avoidDrawStartLatLng = null;
+      _avoidTapPointerId = null;
+      _avoidTapStartPosition = null;
+      _pendingAvoidZoneId = null;
+      _avoidEditPointerId = null;
+      _activeAvoidHandle = null;
+      _avoidOppositeCorner = null;
+      _avoidDragStartLatLng = null;
+      _avoidDragStartBounds = null;
+    });
+  }
+
+  void _handleAvoidPointerDown(PointerDownEvent event) {
+    if (!_isAvoidAreaMode) return;
+    if (event.kind != PointerDeviceKind.touch) return;
+    if (_avoidDrawPointerId != null || _avoidEditPointerId != null) return;
+    final handleHit = _hitTestAvoidHandle(event.localPosition);
+    if (handleHit != null) {
+      _avoidTapPointerId = null;
+      _avoidTapStartPosition = null;
+      _avoidEditPointerId = event.pointer;
+      _activeAvoidZoneId = handleHit.zone.id;
+      _activeAvoidHandle = handleHit.handle;
+      _avoidOppositeCorner =
+          _cornerLatLng(_oppositeHandle(handleHit.handle), handleHit.zone.bounds);
+      _avoidDragStartLatLng = null;
+      _avoidDragStartBounds = null;
+      setState(() {});
+      return;
+    }
+    final zoneHit = _hitTestAvoidZone(event.localPosition);
+    if (zoneHit != null) {
+      _avoidTapPointerId = null;
+      _avoidTapStartPosition = null;
+      _avoidEditPointerId = event.pointer;
+      _activeAvoidZoneId = zoneHit.id;
+      _activeAvoidHandle = null;
+      _avoidOppositeCorner = null;
+      _avoidDragStartLatLng = _latLngFromOffset(event.localPosition);
+      _avoidDragStartBounds = zoneHit.bounds;
+      return;
+    }
+    final startLatLng = _latLngFromOffset(event.localPosition);
+    if (startLatLng == null) return;
+    _avoidTapPointerId = event.pointer;
+    _avoidTapStartPosition = event.localPosition;
+    _avoidDrawStartLatLng = startLatLng;
+  }
+
+  void _handleAvoidPointerMove(PointerMoveEvent event) {
+    if (!_isAvoidAreaMode) return;
+    if (_avoidTapPointerId == event.pointer &&
+        _avoidDrawPointerId == null &&
+        _avoidDrawStartLatLng != null &&
+        _avoidTapStartPosition != null) {
+      final delta =
+          (event.localPosition - _avoidTapStartPosition!).distance;
+      if (delta >= _avoidDragActivationDistance) {
+        final newZone = _AvoidZone(
+          id: _nextAvoidZoneId(),
+          bounds: LatLngBounds.fromPoints(
+            [_avoidDrawStartLatLng!, _avoidDrawStartLatLng!],
+          ),
+        );
+        setState(() {
+          _avoidZones.add(newZone);
+          _activeAvoidZoneId = newZone.id;
+          _pendingAvoidZoneId = newZone.id;
+          _avoidDrawPointerId = event.pointer;
+        });
+        _avoidTapPointerId = null;
+        _avoidTapStartPosition = null;
+      }
+    }
+    if (_avoidDrawPointerId == event.pointer &&
+        _avoidDrawStartLatLng != null &&
+        _pendingAvoidZoneId != null) {
+      final zone = _findAvoidZone(_pendingAvoidZoneId);
+      final currentLatLng = _latLngFromOffset(event.localPosition);
+      if (zone == null || currentLatLng == null) return;
+      setState(() {
+        zone.bounds =
+            LatLngBounds.fromPoints([_avoidDrawStartLatLng!, currentLatLng]);
+      });
+      return;
+    }
+    if (_avoidEditPointerId != event.pointer) return;
+    final zone = _findAvoidZone(_activeAvoidZoneId);
+    final currentLatLng = _latLngFromOffset(event.localPosition);
+    if (zone == null || currentLatLng == null) return;
+    if (_activeAvoidHandle != null) {
+      final fixedCorner = _avoidOppositeCorner;
+      if (fixedCorner == null) return;
+      setState(() {
+        zone.bounds = LatLngBounds.fromPoints([fixedCorner, currentLatLng]);
+      });
+    } else {
+      final startLatLng = _avoidDragStartLatLng;
+      final startBounds = _avoidDragStartBounds;
+      if (startLatLng == null || startBounds == null) return;
+      final dLat = currentLatLng.latitude - startLatLng.latitude;
+      final dLng = currentLatLng.longitude - startLatLng.longitude;
+      setState(() {
+        zone.bounds = LatLngBounds.fromPoints([
+          LatLng(startBounds.south + dLat, startBounds.west + dLng),
+          LatLng(startBounds.north + dLat, startBounds.east + dLng),
+        ]);
+      });
+    }
+  }
+
+  void _handleAvoidPointerEnd(PointerEvent event) {
+    if (event.pointer == _avoidTapPointerId) {
+      _avoidTapPointerId = null;
+      _avoidTapStartPosition = null;
+      _avoidDrawStartLatLng = null;
+      _exitAvoidAreaMode();
+      return;
+    }
+    if (event.pointer == _avoidDrawPointerId) {
+      setState(() {
+        _avoidDrawPointerId = null;
+        _avoidDrawStartLatLng = null;
+        _pendingAvoidZoneId = null;
+      });
+    }
+    if (event.pointer == _avoidEditPointerId) {
+      setState(() {
+        _avoidEditPointerId = null;
+        _activeAvoidHandle = null;
+        _avoidOppositeCorner = null;
+        _avoidDragStartLatLng = null;
+        _avoidDragStartBounds = null;
+      });
+    }
+  }
+
+  _AvoidHandleHit? _hitTestAvoidHandle(Offset position) {
+    final handles = _avoidHandleOffsets();
+    for (final entry in handles.entries) {
+      for (final handleEntry in entry.value.entries) {
+        if ((handleEntry.value - position).distance <= 28) {
+          final zone = _findAvoidZone(entry.key);
+          if (zone != null) {
+            return _AvoidHandleHit(zone: zone, handle: handleEntry.key);
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  _AvoidZone? _hitTestAvoidZone(Offset position) {
+    final latLng = _latLngFromOffset(position);
+    if (latLng == null) return null;
+    for (final zone in _avoidZones.reversed) {
+      if (_boundsContainsPoint(zone.bounds, latLng)) {
+        return zone;
+      }
+    }
+    return null;
+  }
+
+  _AvoidZone? _findAvoidZone(String? id) {
+    if (id == null) return null;
+    for (final zone in _avoidZones) {
+      if (zone.id == id) {
+        return zone;
+      }
+    }
+    return null;
+  }
+
+  bool _boundsContainsPoint(LatLngBounds bounds, LatLng point) {
+    final north = math.max(bounds.north, bounds.south);
+    final south = math.min(bounds.north, bounds.south);
+    final east = math.max(bounds.east, bounds.west);
+    final west = math.min(bounds.east, bounds.west);
+    return point.latitude >= south &&
+        point.latitude <= north &&
+        point.longitude >= west &&
+        point.longitude <= east;
+  }
+
+  String _nextAvoidZoneId() {
+    _avoidZoneCounter += 1;
+    return 'avoid-${_avoidZoneCounter.toString().padLeft(2, '0')}';
+  }
+
+  void _removeAvoidZone(String id) {
+    setState(() {
+      _avoidZones.removeWhere((zone) => zone.id == id);
+      if (_activeAvoidZoneId == id) {
+        _activeAvoidZoneId =
+            _avoidZones.isNotEmpty ? _avoidZones.last.id : null;
+      }
+      if (_pendingAvoidZoneId == id) {
+        _pendingAvoidZoneId = null;
+        _avoidDrawPointerId = null;
+        _avoidDrawStartLatLng = null;
+      }
+      if (_avoidZones.isEmpty) {
+        _activeAvoidHandle = null;
+        _avoidOppositeCorner = null;
+        _avoidDragStartLatLng = null;
+        _avoidDragStartBounds = null;
+      }
     });
   }
 }
@@ -2353,12 +3194,10 @@ class _DualTrackPainter extends CustomPainter {
 class _DistanceBadge extends StatelessWidget {
   const _DistanceBadge({
     required this.miles,
-    required this.accentColor,
     required this.onTap,
   });
 
   final double miles;
-  final Color accentColor;
   final VoidCallback onTap;
 
   @override
@@ -2377,15 +3216,15 @@ class _DistanceBadge extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
           decoration: BoxDecoration(
-            color: accentColor.withValues(alpha: 0.16),
+            color: _historyButtonBase.withValues(alpha: 0.22),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: accentColor.withValues(alpha: 0.4),
+              color: _historyButtonBase.withValues(alpha: 0.38),
               width: 1.2,
             ),
             boxShadow: [
               BoxShadow(
-                color: accentColor.withValues(alpha: 0.2),
+                color: _historyButtonBase.withValues(alpha: 0.24),
                 blurRadius: 8,
                 offset: const Offset(0, 4),
               ),
@@ -2812,10 +3651,47 @@ class _RouteZoneHint extends StatelessWidget {
   }
 }
 
+class _AvoidAreaHint extends StatelessWidget {
+  const _AvoidAreaHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: Container(
+          margin: const EdgeInsets.all(20),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.55),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.block, size: 18),
+              SizedBox(width: 10),
+              Text(
+                'Drag to draw Avoid Areas',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _RouteZoneHandleDot extends StatelessWidget {
-  const _RouteZoneHandleDot({required this.active});
+  const _RouteZoneHandleDot({
+    required this.active,
+    required this.color,
+  });
 
   final bool active;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -2824,11 +3700,25 @@ class _RouteZoneHandleDot extends StatelessWidget {
       height: 28,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: active ? const Color(0xFF5C2C92) : Colors.black.withOpacity(0.65),
+        color: active ? color : Colors.black.withOpacity(0.65),
         border: Border.all(color: Colors.white, width: 2),
       ),
     );
   }
+}
+
+class _AvoidZone {
+  _AvoidZone({required this.id, required this.bounds});
+
+  final String id;
+  LatLngBounds bounds;
+}
+
+class _AvoidHandleHit {
+  const _AvoidHandleHit({required this.zone, required this.handle});
+
+  final _AvoidZone zone;
+  final _RouteZoneHandle handle;
 }
 
 enum _RouteZoneHandle { northWest, northEast, southEast, southWest }
