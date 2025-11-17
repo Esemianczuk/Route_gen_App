@@ -6,6 +6,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:video_player/video_player.dart';
 
@@ -87,8 +88,30 @@ const _elevatedShadow = [
 ];
 const _navEdgeBase = Color(0xFF0A101C);
 const _navCenterBase = Color(0xFF0D3450);
-const BorderRadius _toolbarButtonRadius = BorderRadius.all(Radius.circular(10));
-const BorderRadius _distanceButtonRadius = BorderRadius.all(Radius.circular(14));
+const double _toolbarExpandedWidth = 110;
+const double _toolbarCollapsedWidth = 40;
+LinearGradient navPulseGradient(double pulse) {
+  final edgeStart = Color.lerp(
+    _navEdgeBase.withValues(alpha: 0.75),
+    _navEdgeBase.withValues(alpha: 0.4),
+    pulse,
+  )!;
+  final center = Color.lerp(
+    _navCenterBase.withValues(alpha: 0.95),
+    _navCenterBase.withValues(alpha: 0.6),
+    pulse,
+  )!;
+  // Center the pulse diagonally so the soft glow sits at the middle of the container
+  // on both the x and y axes.
+  return LinearGradient(
+    begin: const Alignment(-1.0, -1.0),
+    end: const Alignment(1.0, 1.0),
+    colors: [edgeStart, center, edgeStart],
+    stops: const [0.0, 0.5, 1.0],
+  );
+}
+const BorderRadius _toolbarButtonRadius = BorderRadius.all(Radius.circular(12));
+const BorderRadius _distanceButtonRadius = BorderRadius.all(Radius.circular(10));
 const _routeZoneAccent = Color(0xFF5C2C92);
 const _routeZoneAccentIcon = Color(0xFFE9D7FF);
 const double _avoidDragActivationDistance = 8;
@@ -102,6 +125,10 @@ class RouteGenApp extends StatelessWidget {
       title: 'Route Gen',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: _bikeAccent),
+        textTheme: GoogleFonts.albertSansTextTheme(
+          ThemeData(brightness: Brightness.dark).textTheme,
+        ),
+        fontFamily: GoogleFonts.albertSans().fontFamily,
         useMaterial3: true,
         scaffoldBackgroundColor: _sherpaBg,
         canvasColor: _sherpaBg,
@@ -111,6 +138,10 @@ class RouteGenApp extends StatelessWidget {
           seedColor: _bikeAccent,
           brightness: Brightness.dark,
         ),
+        textTheme: GoogleFonts.albertSansTextTheme(
+          ThemeData.dark().textTheme,
+        ),
+        fontFamily: GoogleFonts.albertSans().fontFamily,
         scaffoldBackgroundColor: _sherpaBg,
         canvasColor: _sherpaBg,
         useMaterial3: true,
@@ -128,19 +159,33 @@ class IntroVideoScreen extends StatefulWidget {
   State<IntroVideoScreen> createState() => _IntroVideoScreenState();
 }
 
-class _IntroVideoScreenState extends State<IntroVideoScreen> {
+class _IntroVideoScreenState extends State<IntroVideoScreen>
+    with SingleTickerProviderStateMixin {
   late final VideoPlayerController _controller;
   bool _videoInitFailed = false;
+  late final AnimationController _titlePulseController;
+  double _titlePulseValue = 0.5;
+  bool _showSignUpMode = false;
 
   @override
   void initState() {
     super.initState();
     _controller = VideoPlayerController.asset('assets/intro_loop.mp4');
+    _titlePulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 8),
+    )
+      ..addListener(() {
+        final wave = math.sin(_titlePulseController.value * 2 * math.pi);
+        setState(() => _titlePulseValue = (wave + 1) / 2);
+      })
+      ..repeat();
     _initializeVideo();
   }
 
   @override
   void dispose() {
+    _titlePulseController.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -162,8 +207,10 @@ class _IntroVideoScreenState extends State<IntroVideoScreen> {
     }
   }
 
+
   @override
   Widget build(BuildContext context) {
+    final navPulse = navPulseGradient(_titlePulseValue);
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -188,22 +235,74 @@ class _IntroVideoScreenState extends State<IntroVideoScreen> {
                     height: _controller.value.size.height,
                     child: VideoPlayer(_controller),
                   ),
-                ),
               ),
-            )
+            ),
+          )
           else
             const Center(child: CircularProgressIndicator()),
-          const Positioned.fill(child: _TechOverlay()),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 48),
-              child: _LoginCard(
-                onLogin: () {
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (_) => const HelloScreen()),
-                  );
-                },
+          if (!_showSignUpMode)
+            SafeArea(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 520),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: _TitleCard(
+                        gradient: navPulse,
+                        title: 'Route Studio',
+                        subtitle: 'Cinematic routing for any ride',
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          // Removed tech overlay to eliminate global line artifacts over the video background.
+          // const Positioned.fill(child: _TechOverlay()),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 520),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.35),
+                          blurRadius: 34,
+                          spreadRadius: 10,
+                          offset: const Offset(0, 18),
+                        ),
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 18,
+                          spreadRadius: 6,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: SizedBox(
+                      width: double.infinity,
+                  child: _LoginCard(
+                    onLogin: () {
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(builder: (_) => const HelloScreen()),
+                      );
+                    },
+                    onSignupModeChanged: (showing) {
+                      setState(() => _showSignUpMode = showing);
+                    },
+                    showSignUp: _showSignUpMode,
+                  ),
+                ),
+              ),
+            ),
               ),
             ),
           ),
@@ -295,150 +394,524 @@ class _TechOverlayPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+class _CardPatternPainter extends CustomPainter {
+  const _CardPatternPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final base = Colors.white.withOpacity(0.06);
+    final accent = Colors.white.withOpacity(0.1);
+    const spacing = 28.0;
+    const waveAmp = 6.0;
+    const waveFreq = 50.0;
+
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = base;
+
+    for (double y = -spacing; y <= size.height + spacing; y += spacing) {
+      final path = ui.Path()..moveTo(-20, y);
+      for (double x = -20; x <= size.width + 20; x += 18) {
+        final offsetY = math.sin((x + y * 0.35) / waveFreq) * waveAmp +
+            math.cos((x * 0.6) / waveFreq) * (waveAmp * 0.4);
+        path.lineTo(x, y + offsetY);
+      }
+      canvas.drawPath(path, paint);
+    }
+
+    final accentPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..color = accent;
+    for (double y = -spacing * 1.5;
+        y <= size.height + spacing;
+        y += spacing * 2.2) {
+      final path = ui.Path()..moveTo(-30, y);
+      for (double x = -30; x <= size.width + 30; x += 16) {
+        final offsetY =
+            math.sin((x * 0.8 + y * 0.5) / (waveFreq * 0.8)) * (waveAmp * 1.3);
+        path.lineTo(x, y + offsetY);
+      }
+      canvas.drawPath(path, accentPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 class _LoginCard extends StatefulWidget {
-  const _LoginCard({required this.onLogin});
+  const _LoginCard({
+    super.key,
+    required this.onLogin,
+    required this.onSignupModeChanged,
+    required this.showSignUp,
+  });
 
   final VoidCallback onLogin;
+  final ValueChanged<bool> onSignupModeChanged;
+  final bool showSignUp;
 
   @override
   State<_LoginCard> createState() => _LoginCardState();
 }
 
-class _LoginCardState extends State<_LoginCard> {
+class _LoginCardState extends State<_LoginCard>
+    with SingleTickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+  final _confirmController = TextEditingController();
   bool _obscure = true;
+  late final AnimationController _pulseController;
+  double _pulseValue = 0.5;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 4200),
+    )
+      ..addListener(() {
+        final wave = math.sin(_pulseController.value * 2 * math.pi);
+        setState(() => _pulseValue = (wave + 1) / 2);
+      })
+      ..repeat();
+  }
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _confirmController.dispose();
+    _pulseController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final borderRadius = BorderRadius.circular(28);
-    return ClipRRect(
-      borderRadius: borderRadius,
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            borderRadius: borderRadius,
-            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.white.withOpacity(0.18),
-                Colors.white.withOpacity(0.06),
-                Colors.white.withOpacity(0.04),
-              ],
-              stops: const [0.0, 0.4, 1.0],
+    final borderRadius = _chromeBorderRadius;
+    final pulseColors = navPulseGradient(_pulseValue).colors;
+
+    Widget navStyleButton({
+      required String label,
+      required IconData icon,
+      required VoidCallback onTap,
+    }) {
+      final radius = BorderRadius.circular(18);
+      final fadedPulse = navPulseGradient(_pulseValue)
+          .colors
+          .map((c) => c.withOpacity(0.35))
+          .toList();
+      final buttonGradient = LinearGradient(
+        begin: const Alignment(-1, -1),
+        end: const Alignment(1, 1),
+        colors: fadedPulse,
+        stops: const [0.0, 0.5, 1.0],
+      );
+
+      return ClipRRect(
+        borderRadius: radius,
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: radius,
+              gradient: buttonGradient,
+              border: Border.all(
+                color: Colors.white.withOpacity(0.12),
+                width: 1.1,
+              ),
             ),
-            boxShadow: _elevatedShadow,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.white.withOpacity(0.25),
-                          Colors.white.withOpacity(0.05),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
-                    ),
-                    child: const Icon(Icons.near_me, color: Colors.white),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: radius,
+                onTap: onTap,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeInOut,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 0,
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text(
-                          'Welcome back',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      minHeight: 48,
+                      minWidth: double.infinity,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withOpacity(0.06),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.12),
+                            ),
                           ),
+                          child: Icon(icon, size: 14, color: Colors.white),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(width: 10),
                         Text(
-                          'Sign in to keep building epic routes.',
-                          style: TextStyle(color: Colors.white70),
+                          label,
+                          style: GoogleFonts.albertSans(
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.4,
+                            fontSize: 14,
+                            color: Colors.white,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                ],
+                ),
               ),
-              const SizedBox(height: 20),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return _loginShell(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          borderRadius: borderRadius,
+          color: Colors.white.withOpacity(0.08),
+          border: Border.all(color: Colors.white.withOpacity(0.14)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x33000000),
+              blurRadius: 24,
+              offset: Offset(0, 14),
+            ),
+            BoxShadow(
+              color: Color(0x1A000000),
+              blurRadius: 8,
+              offset: Offset(0, 6),
+            ),
+          ],
+        ),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 4),
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
-                style: const TextStyle(color: Colors.white),
+                style: GoogleFonts.albertSans(color: Colors.white),
                 decoration: _loginFieldDecoration(
                   label: 'Email',
                   icon: Icons.mail_outline,
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 10),
               TextField(
                 controller: _passwordController,
                 obscureText: _obscure,
-                style: const TextStyle(color: Colors.white),
+                style: GoogleFonts.albertSans(color: Colors.white),
                 decoration: _loginFieldDecoration(
                   label: 'Password',
                   icon: Icons.lock_outline,
                   suffix: IconButton(
                     icon: Icon(
-                      _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                      _obscure
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
                       color: Colors.white70,
                     ),
                     onPressed: () => setState(() => _obscure = !_obscure),
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 10),
+              if (widget.showSignUp) ...[
+                TextField(
+                  controller: _confirmController,
+                  obscureText: true,
+                  style: GoogleFonts.albertSans(color: Colors.white),
+                  decoration: _loginFieldDecoration(
+                    label: 'Confirm password',
+                    icon: Icons.key_outlined,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _firstNameController,
+                  style: GoogleFonts.albertSans(color: Colors.white),
+                  decoration: _loginFieldDecoration(
+                    label: 'First name',
+                    icon: Icons.person,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _lastNameController,
+                  style: GoogleFonts.albertSans(color: Colors.white),
+                  decoration: _loginFieldDecoration(
+                    label: 'Last name',
+                    icon: Icons.person_outline,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const SizedBox(height: 12),
+                Text(
+                  'Optional',
+                  style: GoogleFonts.albertSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white70,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  style: GoogleFonts.albertSans(color: Colors.white),
+                  decoration: _loginFieldDecoration(
+                    label: 'Address line 1',
+                    icon: Icons.home_outlined,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  style: GoogleFonts.albertSans(color: Colors.white),
+                  decoration: _loginFieldDecoration(
+                    label: 'Address line 2 (optional)',
+                    icon: Icons.location_city,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        style: GoogleFonts.albertSans(color: Colors.white),
+                        decoration: _loginFieldDecoration(
+                          label: 'City',
+                          icon: Icons.location_on_outlined,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        style: GoogleFonts.albertSans(color: Colors.white),
+                        decoration: _loginFieldDecoration(
+                          label: 'State/Region',
+                          icon: Icons.map_outlined,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        style: GoogleFonts.albertSans(color: Colors.white),
+                        decoration: _loginFieldDecoration(
+                          label: 'Postal code',
+                          icon: Icons.local_post_office_outlined,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        style: GoogleFonts.albertSans(color: Colors.white),
+                        decoration: _loginFieldDecoration(
+                          label: 'Country',
+                          icon: Icons.public,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 14),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        height: 1.4,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.white.withOpacity(0.05),
+                              pulseColors[1].withOpacity(0.9),
+                              Colors.white.withOpacity(0.05),
+                            ],
+                            stops: const [0.0, 0.5, 1.0],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: Row(
+                        children: [
+                          Icon(Icons.radar_rounded, size: 16, color: Colors.white70),
+                          const SizedBox(width: 6),
+                          Text(
+                            widget.showSignUp ? 'Sign up' : 'Continue',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Container(
+                        height: 1.4,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.white.withOpacity(0.05),
+                              pulseColors[1].withOpacity(0.9),
+                              Colors.white.withOpacity(0.05),
+                            ],
+                            stops: const [0.0, 0.5, 1.0],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               Row(
                 children: [
                   Expanded(
-                    child: _SettingsUnitChip(
-                      label: 'Log in',
-                      icon: Icons.login_rounded,
-                      selected: true,
-                      accentColor: _runAccent,
-                      emphasize: true,
-                      onTap: widget.onLogin,
+                    child: _AuthChip(
+                      label: 'Google',
+                      assetPath: 'assets/icons/google.png',
+                      backgroundColor: Colors.white,
+                      borderColor: const Color(0xFFDADCE0),
+                      labelColor: const Color(0xFF3C4043),
+                      useFrame: false,
+                      radius: BorderRadius.circular(18),
+                      minHeight: 48,
+                      fontSize: 14,
+                      onTap: () {},
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
-                    child: _SettingsUnitChip(
+                    child: _AuthChip(
+                      label: 'Apple',
+                      iconData: Icons.apple,
+                      backgroundColor: Colors.black,
+                      borderColor: Colors.white.withValues(alpha: 0.18),
+                      labelColor: Colors.white,
+                      useFrame: false,
+                      radius: BorderRadius.circular(18),
+                      minHeight: 48,
+                      fontSize: 14,
+                      onTap: () {},
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: navStyleButton(
+                      label: 'Log in',
+                      icon: Icons.login_rounded,
+                      onTap: () {
+                        setState(() {
+                          widget.onSignupModeChanged(false);
+                        });
+                        widget.onLogin();
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: navStyleButton(
                       label: 'Sign up',
                       icon: Icons.person_add_alt,
-                      selected: false,
-                      accentColor: _bikeAccent,
                       onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const HelloScreen()),
-                        );
+                        setState(() {
+                          widget.onSignupModeChanged(true);
+                        });
                       },
                     ),
                   ),
                 ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _loginShell({required Widget child}) {
+    return ClipRRect(
+      borderRadius: _chromeBorderRadius,
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: _chromeBorderRadius,
+            gradient: LinearGradient(
+              begin: const Alignment(-1, -1),
+              end: const Alignment(1, 1),
+              colors: [
+                Colors.white.withOpacity(0.035),
+                Colors.white.withOpacity(0.008),
+              ],
+            ),
+            border: Border.all(color: Colors.white.withOpacity(0.01)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x33000000),
+                blurRadius: 24,
+                spreadRadius: 1.5,
+                offset: Offset(0, 12),
+              ),
+              BoxShadow(
+                color: Color(0x19000000),
+                blurRadius: 12,
+                spreadRadius: 0.5,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: _chromeBorderRadius,
+                    color: Colors.black.withOpacity(0.28),
+                  ),
+                ),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: _chromeBorderRadius,
+                  border: Border.all(color: Colors.white.withOpacity(0.02)),
+                ),
+                child: child,
               ),
             ],
           ),
@@ -456,9 +929,9 @@ class _LoginCardState extends State<_LoginCard> {
       labelText: label,
       prefixIcon: Icon(icon, color: Colors.white70),
       suffixIcon: suffix,
-      labelStyle: const TextStyle(color: Colors.white70),
+      labelStyle: GoogleFonts.albertSans(color: Colors.white70),
       filled: true,
-      fillColor: Colors.white.withValues(alpha: 0.06),
+      fillColor: Colors.white.withValues(alpha: 0.08),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
         borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
@@ -475,6 +948,81 @@ class _LoginCardState extends State<_LoginCard> {
   }
 }
 
+class _AuthChip extends StatelessWidget {
+  const _AuthChip({
+    required this.label,
+    required this.backgroundColor,
+    required this.borderColor,
+    required this.labelColor,
+    required this.onTap,
+    this.useFrame = true,
+    this.assetPath,
+    this.iconData,
+    this.radius,
+    this.minHeight,
+    this.fontSize,
+  });
+
+  final String label;
+  final String? assetPath;
+  final IconData? iconData;
+  final Color backgroundColor;
+  final Color borderColor;
+  final Color labelColor;
+  final VoidCallback onTap;
+  final bool useFrame;
+  final BorderRadius? radius;
+  final double? minHeight;
+  final double? fontSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveRadius = radius ?? _chromeBorderRadius;
+    final content = Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: effectiveRadius,
+        onTap: onTap,
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: minHeight != null ? 0 : 10,
+          ),
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: effectiveRadius,
+            border: Border.all(color: borderColor),
+          ),
+          child: ConstrainedBox(
+            constraints:
+                BoxConstraints(minHeight: minHeight ?? 0, minWidth: double.infinity),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (assetPath != null) Image.asset(assetPath!, width: 18, height: 18),
+                if (iconData != null) Icon(iconData, size: 18, color: labelColor),
+                const SizedBox(width: 10),
+                _AdaptiveText(
+                  label,
+                  alignment: Alignment.center,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: labelColor,
+                    fontSize: fontSize ?? 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (!useFrame) return content;
+    return _ToolbarButtonFrame(child: content);
+  }
+}
+
 class HelloScreen extends StatefulWidget {
   const HelloScreen({super.key});
 
@@ -488,6 +1036,7 @@ class _HelloScreenState extends State<HelloScreen>
   int _selectedModeIndex = 0;
   double _preferredMiles = 20;
   int _routeMode = 0;
+  final math.Random _rng = math.Random();
   static const List<_LayerOption> _layerOptionPresets = [
     _LayerOption(
       title: 'Leaflet Streets',
@@ -560,9 +1109,26 @@ class _HelloScreenState extends State<HelloScreen>
   bool _isRouteZoneEditMode = false;
   bool _isLayerSheetOpen = false;
   bool _isModeSheetOpen = false;
+  bool _isDownloadSheetOpen = false;
   int _distanceUnit = 0;
   int _selectedLanguageIndex = 0;
   int _selectedLayerIndex = 0;
+  int _selectedDownloadIndex = 0;
+  int _funUnitIndex = 0;
+  static const List<_FunUnit> _funUnits = [
+    _FunUnit('Leagues', milesPerUnit: 3.0),
+    _FunUnit('Furlongs', milesPerUnit: 0.125),
+    _FunUnit('Smoots', milesPerUnit: 0.001057),
+    _FunUnit('Nautical Miles', milesPerUnit: 1.15078),
+    _FunUnit('Chains', milesPerUnit: 0.045),
+    _FunUnit('Cubits', milesPerUnit: 0.000284),
+    _FunUnit('Rods', milesPerUnit: 0.003125),
+    _FunUnit('Clicks', milesPerUnit: 0.621371),
+    _FunUnit('Blocks', milesPerUnit: 0.05),
+    _FunUnit('Fathoms', milesPerUnit: 0.001136),
+    _FunUnit('Hands', milesPerUnit: 0.011362),
+    _FunUnit('Fields', milesPerUnit: 0.0568),
+  ];
   LatLngBounds? _routeZoneBounds;
   int? _routeZonePointerId;
   LatLng? _routeZoneStartLatLng;
@@ -591,6 +1157,135 @@ class _HelloScreenState extends State<HelloScreen>
   Color get _activeAccentColor => _activeMode.accentColor;
   _LanguageOption get _activeLanguage =>
       _languageOptions[_selectedLanguageIndex];
+  _DownloadOption get _activeDownload =>
+      _downloadOptions[_selectedDownloadIndex];
+  _FunUnit get _activeFunUnit => _funUnits[_funUnitIndex];
+  final List<_DownloadOption> _downloadOptions = const [
+    _DownloadOption(
+      title: 'GPX',
+      subtitle: 'Great for Garmin & Strava',
+      icon: Icons.alt_route,
+    ),
+    _DownloadOption(
+      title: 'KML',
+      subtitle: 'Google Earth & My Maps',
+      icon: Icons.public,
+    ),
+    _DownloadOption(
+      title: 'GeoJSON',
+      subtitle: 'Developer-friendly JSON',
+      icon: Icons.code,
+    ),
+    _DownloadOption(
+      title: 'CSV',
+      subtitle: 'Waypoints & coordinates',
+      icon: Icons.table_chart_outlined,
+    ),
+  ];
+  String get _funUnitShortLabel => _activeFunUnit.name;
+  Widget _toolbarTooltip({required String label, required Widget child}) =>
+      Tooltip(message: label, child: child);
+
+  Widget _buildToolbarButton({
+    required Key key,
+    required Color color,
+    required Color borderColor,
+    required IconData icon,
+    required String text,
+    required bool expanded,
+    required VoidCallback onTap,
+    double borderWidth = 1.2,
+    Color iconColor = Colors.white,
+    VoidCallback? onLongPress,
+  }) {
+    return _ToolbarButtonFrame(
+      borderRadius: _toolbarButtonRadius,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: _toolbarButtonRadius,
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeInOut,
+            key: key,
+            height: expanded ? null : _toolbarCollapsedWidth,
+            padding: EdgeInsets.symmetric(
+              // Keep collapsed buttons compact and square.
+              horizontal: expanded ? 12 : 4,
+              vertical: expanded ? 6 : 4,
+            ),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: _toolbarButtonRadius,
+              border: Border.all(
+                color: borderColor,
+                width: borderWidth,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.18),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) {
+                final fade = CurvedAnimation(parent: animation, curve: Curves.easeInOut);
+                final sizeEase = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+                return FadeTransition(
+                  opacity: fade,
+                  child: SizeTransition(
+                    sizeFactor: sizeEase,
+                    axis: Axis.horizontal,
+                    axisAlignment: -1.0,
+                    child: child,
+                  ),
+                );
+              },
+              child: expanded
+                  ? Row(
+                      key: const ValueKey('expanded'),
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        Icon(icon, size: 16, color: iconColor),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            text,
+                            textAlign: TextAlign.center,
+                            style: _toolbarLabelStyle(iconColor),
+                          ),
+                        ),
+                      ],
+                    )
+                  : Center(
+                      key: const ValueKey('collapsed'),
+                      child: Icon(icon, size: 16, color: iconColor),
+                    ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+  double _preferredValueForUnit() {
+    if (_distanceUnit == 1) return _preferredMiles * 1.60934;
+    if (_distanceUnit == 2) return _preferredMiles / _activeFunUnit.milesPerUnit;
+    return _preferredMiles;
+  }
+
+  String _activeUnitLabel() {
+    if (_distanceUnit == 1) return _tr('unit.kmShort');
+    if (_distanceUnit == 2) return _funUnitShortLabel;
+    return _tr('unit.miShort');
+  }
   TextStyle _toolbarLabelStyle(Color color) => TextStyle(
         fontSize: 11,
         fontWeight: FontWeight.w600,
@@ -643,7 +1338,7 @@ class _HelloScreenState extends State<HelloScreen>
     final baseTheme = Theme.of(context);
     final accentColor = _activeAccentColor;
     final isGenerateSelected = _selectedToolIndex == 2;
-    final navGradient = _navGradientForPulse(_navPulseValue);
+    final navGradient = navPulseGradient(_navPulseValue);
     final modeColorScheme = ColorScheme.fromSeed(
       seedColor: accentColor,
       brightness: Brightness.dark,
@@ -784,17 +1479,18 @@ class _HelloScreenState extends State<HelloScreen>
                     bottom: false,
                     child: Padding(
                       padding: const EdgeInsets.only(right: 16, top: 10),
-                      child: Tooltip(
-                        message: _tr('distance.title'),
-                        child: _ToolbarButtonFrame(
-                          borderRadius: _distanceButtonRadius,
-                          child: _DistanceBadge(
-                            miles: _preferredMiles,
-                            onTap: () => _openDistanceSheet(),
-                            expanded: _isSearchExpanded,
+                        child: Tooltip(
+                          message: _tr('distance.title'),
+                          child: _ToolbarButtonFrame(
+                            borderRadius: _distanceButtonRadius,
+                            child: _DistanceBadge(
+                              value: _preferredValueForUnit(),
+                              unitLabel: _activeUnitLabel(),
+                              onTap: () => _openDistanceSheet(),
+                              expanded: false,
+                            ),
                           ),
                         ),
-                      ),
                     ),
                   ),
                 ),
@@ -808,505 +1504,172 @@ class _HelloScreenState extends State<HelloScreen>
                 child: AnimatedOpacity(
                   opacity: hideSideToolbar ? 0 : 1,
                   duration: const Duration(milliseconds: 220),
-                curve: Curves.easeInOut,
-                child: IgnorePointer(
-                  ignoring: hideSideToolbar,
-                  child: SafeArea(
-                    child: Padding(
+                  curve: Curves.easeInOut,
+                  child: IgnorePointer(
+                    ignoring: hideSideToolbar,
+                    child: SafeArea(
+                      child: Padding(
                         padding: const EdgeInsets.only(right: 16, top: 14, bottom: 14),
                         child: ConstrainedBox(
                           key: const ValueKey('actions-toolbar'),
                           constraints: BoxConstraints(
-                            minWidth: 48,
-                            maxWidth: _isSearchExpanded ? 220 : 60,
+                            minWidth: _isSearchExpanded
+                                ? _toolbarExpandedWidth
+                                : _toolbarCollapsedWidth,
+                            maxWidth: _isSearchExpanded ? 220 : _toolbarCollapsedWidth + 8,
                           ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: _isSearchExpanded
-                                ? CrossAxisAlignment.end
-                                : CrossAxisAlignment.center,
-                            children: [
-                              const SizedBox(height: 36),
-                              Tooltip(
-                                message: _tr('mode.sheet.title'),
-                                child: _ToolbarButtonFrame(
-                                  borderRadius: _toolbarButtonRadius,
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      borderRadius: _toolbarButtonRadius,
+                          child: Builder(builder: (context) {
+                            const double expandedWidth = _toolbarExpandedWidth;
+                            const double collapsedWidth = _toolbarCollapsedWidth;
+                            Widget sizedButton(Widget child) => SizedBox(
+                                  width: _isSearchExpanded ? expandedWidth : collapsedWidth,
+                                  child: child,
+                                );
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: _isSearchExpanded
+                                    ? CrossAxisAlignment.end
+                                    : CrossAxisAlignment.center,
+                                children: [
+                                  const SizedBox(height: 36),
+                                  _toolbarTooltip(
+                                    label: _tr('mode.sheet.title'),
+                                    child: sizedButton(_buildToolbarButton(
+                                      key: const ValueKey('mode-toggle-button'),
+                                      color: accentColor.withValues(alpha: 0.16),
+                                      borderColor: _isModeSheetOpen
+                                          ? Colors.white.withValues(alpha: 0.95)
+                                          : accentColor.withValues(alpha: 0.4),
+                                      icon: _activeMode.icon,
+                                      text: 'Mode',
+                                      expanded: _isSearchExpanded,
+                                      borderWidth: _isModeSheetOpen ? 2.6 : 1.2,
                                       onTap: _openModeSheet,
-                                      child: AnimatedContainer(
-                                        duration: const Duration(milliseconds: 220),
-                                        curve: Curves.easeInOut,
-                                        key: const ValueKey('mode-toggle-button'),
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: _isSearchExpanded ? 12 : 6,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: accentColor.withValues(alpha: 0.16),
-                                          borderRadius: _toolbarButtonRadius,
-                                          border: Border.all(
-                                            color: _isModeSheetOpen
-                                                ? Colors.white.withValues(alpha: 0.95)
-                                                : accentColor.withValues(alpha: 0.4),
-                                            width: _isModeSheetOpen ? 2.6 : 1.2,
-                                          ),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: accentColor.withValues(alpha: 0.18),
-                                              blurRadius: 8,
-                                              offset: const Offset(0, 4),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          mainAxisAlignment: _isSearchExpanded
-                                              ? MainAxisAlignment.end
-                                              : MainAxisAlignment.center,
-                                          children: [
-                                            Icon(
-                                              _activeMode.icon,
-                                              size: 18,
-                                            ),
-                                            if (_isSearchExpanded) ...[
-                                              const SizedBox(width: 8),
-                                              Text(
-                                                'Mode',
-                                                style:
-                                                    _toolbarLabelStyle(Colors.white),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                      ),
-                                    ),
+                                    )),
                                   ),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Tooltip(
-                                message: 'Layer controls',
-                                child: _ToolbarButtonFrame(
-                                  borderRadius: _toolbarButtonRadius,
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      borderRadius: _toolbarButtonRadius,
-                                      onTap: () => _openLayerPickerSheet(),
-                                      child: AnimatedContainer(
-                                        duration: const Duration(milliseconds: 220),
-                                        curve: Curves.easeInOut,
-                                        key: const ValueKey('layer-menu-button'),
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: _isSearchExpanded ? 12 : 6,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: accentColor.withValues(alpha: 0.16),
-                                          borderRadius: _toolbarButtonRadius,
-                                          border: Border.all(
-                                            color: _isLayerSheetOpen
-                                                ? Colors.white.withValues(alpha: 0.95)
-                                                : accentColor.withValues(alpha: 0.4),
-                                            width: _isLayerSheetOpen ? 2.6 : 1.2,
-                                          ),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: accentColor.withValues(alpha: 0.2),
-                                              blurRadius: 8,
-                                              offset: const Offset(0, 4),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          mainAxisAlignment: _isSearchExpanded
-                                              ? MainAxisAlignment.end
-                                              : MainAxisAlignment.center,
-                                          children: [
-                                            const Icon(
-                                              Icons.layers_outlined,
-                                              size: 18,
-                                              color: Colors.white,
-                                            ),
-                                            if (_isSearchExpanded) ...[
-                                              const SizedBox(width: 8),
-                                              Text(
-                                                'Layers',
-                                                style:
-                                                    _toolbarLabelStyle(Colors.white),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                      ),
-                                    ),
+                                  const SizedBox(height: 12),
+                                  _toolbarTooltip(
+                                    label: 'Account & profiles',
+                                    child: sizedButton(_buildToolbarButton(
+                                      key: const ValueKey('account-button'),
+                                      color: accentColor.withValues(alpha: 0.16),
+                                      borderColor: accentColor.withValues(alpha: 0.35),
+                                      icon: Icons.account_circle_outlined,
+                                      text: 'Account',
+                                      expanded: _isSearchExpanded,
+                                      onTap: _openAccountPage,
+                                    )),
                                   ),
-                                ),
-                              ),
-                              const SizedBox(height: 36),
-                              Tooltip(
-                                message: 'Undo last change',
-                                child: _ToolbarButtonFrame(
-                                  borderRadius: _toolbarButtonRadius,
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      borderRadius: _toolbarButtonRadius,
-                                      onTap: () {
-                                        // TODO: hook up undo stack
-                                      },
-                                      child: AnimatedContainer(
-                                        duration: const Duration(milliseconds: 220),
-                                        curve: Curves.easeInOut,
-                                        key: const ValueKey('undo-button'),
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: _isSearchExpanded ? 12 : 6,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _historyButtonBase.withValues(alpha: 0.22),
-                                          borderRadius: _toolbarButtonRadius,
-                                          border: Border.all(
-                                            color: _historyButtonBase.withValues(alpha: 0.38),
-                                            width: 1.2,
-                                          ),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: _historyButtonBase.withValues(alpha: 0.24),
-                                              blurRadius: 8,
-                                              offset: const Offset(0, 4),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          mainAxisAlignment: _isSearchExpanded
-                                              ? MainAxisAlignment.end
-                                              : MainAxisAlignment.center,
-                                          children: [
-                                            const Icon(
-                                              Icons.undo,
-                                              size: 18,
-                                              color: _historyButtonIcon,
-                                            ),
-                                            if (_isSearchExpanded) ...[
-                                              const SizedBox(width: 8),
-                                              Text(
-                                                'Undo',
-                                                style: _toolbarLabelStyle(
-                                                  _historyButtonIcon,
-                                                ),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                      ),
-                                    ),
+                                  const SizedBox(height: 12),
+                                  _toolbarTooltip(
+                                    label: 'Layer controls',
+                                    child: sizedButton(_buildToolbarButton(
+                                      key: const ValueKey('layer-menu-button'),
+                                      color: accentColor.withValues(alpha: 0.16),
+                                      borderColor: _isLayerSheetOpen
+                                          ? Colors.white.withValues(alpha: 0.95)
+                                          : accentColor.withValues(alpha: 0.4),
+                                      icon: Icons.layers_outlined,
+                                      iconColor: Colors.white,
+                                      text: 'Layers',
+                                      expanded: _isSearchExpanded,
+                                      borderWidth: _isLayerSheetOpen ? 2.6 : 1.2,
+                                      onTap: _openLayerPickerSheet,
+                                    )),
                                   ),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Tooltip(
-                                message: 'Redo change',
-                                child: _ToolbarButtonFrame(
-                                  borderRadius: _toolbarButtonRadius,
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      borderRadius: _toolbarButtonRadius,
-                                      onTap: () {
-                                        // TODO: hook up redo stack
-                                      },
-                                      child: AnimatedContainer(
-                                        duration: const Duration(milliseconds: 220),
-                                        curve: Curves.easeInOut,
-                                        key: const ValueKey('redo-button'),
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: _isSearchExpanded ? 12 : 6,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color:
-                                              _historyButtonBase.withValues(alpha: 0.22),
-                                          borderRadius: _toolbarButtonRadius,
-                                          border: Border.all(
-                                            color: _historyButtonBase.withValues(alpha: 0.38),
-                                            width: 1.2,
-                                          ),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: _historyButtonBase.withValues(alpha: 0.24),
-                                              blurRadius: 8,
-                                              offset: const Offset(0, 4),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          mainAxisAlignment: _isSearchExpanded
-                                              ? MainAxisAlignment.end
-                                              : MainAxisAlignment.center,
-                                          children: [
-                                            const Icon(
-                                              Icons.redo,
-                                              size: 18,
-                                              color: _historyButtonIcon,
-                                            ),
-                                            if (_isSearchExpanded) ...[
-                                              const SizedBox(width: 8),
-                                              Text(
-                                                'Redo',
-                                                style: _toolbarLabelStyle(
-                                                  _historyButtonIcon,
-                                                ),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                      ),
-                                    ),
+                                  const SizedBox(height: 36),
+                                  _toolbarTooltip(
+                                    label: 'Undo last change',
+                                    child: sizedButton(_buildToolbarButton(
+                                      key: const ValueKey('undo-button'),
+                                      color: _historyButtonBase.withValues(alpha: 0.22),
+                                      borderColor: _historyButtonBase.withValues(alpha: 0.38),
+                                      icon: Icons.undo,
+                                      iconColor: _historyButtonIcon,
+                                      text: 'Undo',
+                                      expanded: _isSearchExpanded,
+                                      onTap: () {},
+                                    )),
                                   ),
-                                ),
-                              ),
-                              const SizedBox(height: 36),
-                              Tooltip(
-                                message: 'Clear current route',
-                                child: _ToolbarButtonFrame(
-                                  borderRadius: _toolbarButtonRadius,
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      borderRadius: _toolbarButtonRadius,
-                                      onTap: () {
-                                        // TODO: implement clear route
-                                      },
-                                      child: AnimatedContainer(
-                                        duration: const Duration(milliseconds: 220),
-                                        curve: Curves.easeInOut,
-                                        key: const ValueKey('clear-button'),
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: _isSearchExpanded ? 12 : 6,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _clearButtonBase.withValues(alpha: 0.2),
-                                          borderRadius: _toolbarButtonRadius,
-                                          border: Border.all(
-                                            color: _clearButtonBase.withValues(alpha: 0.38),
-                                            width: 1.2,
-                                          ),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: _clearButtonBase.withValues(alpha: 0.22),
-                                              blurRadius: 8,
-                                              offset: const Offset(0, 4),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          mainAxisAlignment: _isSearchExpanded
-                                              ? MainAxisAlignment.end
-                                              : MainAxisAlignment.center,
-                                          children: [
-                                            const Icon(
-                                              Icons.close,
-                                              size: 18,
-                                              color: _clearButtonIcon,
-                                            ),
-                                            if (_isSearchExpanded) ...[
-                                              const SizedBox(width: 8),
-                                              Text(
-                                                'Clear',
-                                                style: _toolbarLabelStyle(
-                                                  _clearButtonIcon,
-                                                ),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                      ),
-                                    ),
+                                  const SizedBox(height: 12),
+                                  _toolbarTooltip(
+                                    label: 'Redo change',
+                                    child: sizedButton(_buildToolbarButton(
+                                      key: const ValueKey('redo-button'),
+                                      color: _historyButtonBase.withValues(alpha: 0.22),
+                                      borderColor: _historyButtonBase.withValues(alpha: 0.38),
+                                      icon: Icons.redo,
+                                      iconColor: _historyButtonIcon,
+                                      text: 'Redo',
+                                      expanded: _isSearchExpanded,
+                                      onTap: () {},
+                                    )),
                                   ),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Tooltip(
-                                message: 'Toolbar settings',
-                                child: _ToolbarButtonFrame(
-                                  borderRadius: _toolbarButtonRadius,
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      borderRadius: _toolbarButtonRadius,
+                                  const SizedBox(height: 36),
+                                  _toolbarTooltip(
+                                    label: 'Clear current route',
+                                    child: sizedButton(_buildToolbarButton(
+                                      key: const ValueKey('clear-button'),
+                                      color: _clearButtonBase.withValues(alpha: 0.2),
+                                      borderColor: _clearButtonBase.withValues(alpha: 0.38),
+                                      icon: Icons.close,
+                                      iconColor: _clearButtonIcon,
+                                      text: 'Clear',
+                                      expanded: _isSearchExpanded,
+                                      onTap: () {},
+                                    )),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _toolbarTooltip(
+                                    label: 'Toolbar settings',
+                                    child: sizedButton(_buildToolbarButton(
+                                      key: const ValueKey('settings-button'),
+                                      color: accentColor.withValues(alpha: 0.16),
+                                      borderColor: accentColor.withValues(alpha: 0.35),
+                                      icon: Icons.settings,
+                                      text: 'Settings',
+                                      expanded: _isSearchExpanded,
                                       onTap: _openSettingsSheet,
-                                      child: AnimatedContainer(
-                                        duration: const Duration(milliseconds: 220),
-                                        curve: Curves.easeInOut,
-                                        key: const ValueKey('settings-button'),
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: _isSearchExpanded ? 12 : 6,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: accentColor.withValues(alpha: 0.16),
-                                          borderRadius: _toolbarButtonRadius,
-                                          border: Border.all(
-                                            color: accentColor.withValues(alpha: 0.35),
-                                            width: 1.2,
-                                          ),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: accentColor.withValues(alpha: 0.18),
-                                              blurRadius: 8,
-                                              offset: const Offset(0, 4),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          mainAxisAlignment: _isSearchExpanded
-                                              ? MainAxisAlignment.end
-                                              : MainAxisAlignment.center,
-                                          children: [
-                                            const Icon(Icons.settings, size: 18),
-                                            if (_isSearchExpanded) ...[
-                                              const SizedBox(width: 8),
-                                              Text(
-                                                'Settings',
-                                                style:
-                                                    _toolbarLabelStyle(Colors.white),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                      ),
-                                    ),
+                                    )),
                                   ),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Tooltip(
-                                message: 'View analytics',
-                                child: _ToolbarButtonFrame(
-                                  borderRadius: _toolbarButtonRadius,
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      borderRadius: _toolbarButtonRadius,
+                                  const SizedBox(height: 12),
+                                  _toolbarTooltip(
+                                    label: 'View analytics',
+                                    child: sizedButton(_buildToolbarButton(
+                                      key: const ValueKey('stats-button'),
+                                      color: accentColor.withValues(alpha: 0.16),
+                                      borderColor: accentColor.withValues(alpha: 0.35),
+                                      icon: Icons.query_stats,
+                                      text: 'Graph',
+                                      expanded: _isSearchExpanded,
                                       onTap: _openAnalyticsSheet,
-                                      child: AnimatedContainer(
-                                        duration: const Duration(milliseconds: 220),
-                                        curve: Curves.easeInOut,
-                                        key: const ValueKey('stats-button'),
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: _isSearchExpanded ? 12 : 6,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: accentColor.withValues(alpha: 0.16),
-                                          borderRadius: _toolbarButtonRadius,
-                                          border: Border.all(
-                                            color: accentColor.withValues(alpha: 0.35),
-                                            width: 1.2,
-                                          ),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: accentColor.withValues(alpha: 0.18),
-                                              blurRadius: 8,
-                                              offset: const Offset(0, 4),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          mainAxisAlignment: _isSearchExpanded
-                                              ? MainAxisAlignment.end
-                                              : MainAxisAlignment.center,
-                                          children: [
-                                            const Icon(Icons.query_stats, size: 18),
-                                            if (_isSearchExpanded) ...[
-                                              const SizedBox(width: 8),
-                                              Text(
-                                                'Graph',
-                                                style:
-                                                    _toolbarLabelStyle(Colors.white),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                      ),
-                                    ),
+                                    )),
                                   ),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Tooltip(
-                                message: 'Quick info',
-                                child: _ToolbarButtonFrame(
-                                  borderRadius: _toolbarButtonRadius,
-                                  child: Material(
-                                    color: Colors.transparent,
-                                    child: InkWell(
-                                      borderRadius: _toolbarButtonRadius,
+                                  const SizedBox(height: 12),
+                                  _toolbarTooltip(
+                                    label: 'Quick info',
+                                    child: sizedButton(_buildToolbarButton(
+                                      key: const ValueKey('info-button'),
+                                      color: accentColor.withValues(alpha: 0.16),
+                                      borderColor: _isSearchExpanded
+                                          ? Colors.white.withValues(alpha: 0.9)
+                                          : accentColor.withValues(alpha: 0.35),
+                                      icon: Icons.info_outline,
+                                      text: 'Info',
+                                      expanded: _isSearchExpanded,
                                       onTap: () {
-                                        setState(
-                                            () => _isSearchExpanded = !_isSearchExpanded);
+                                        setState(() => _isSearchExpanded = !_isSearchExpanded);
                                       },
                                       onLongPress: _openInfoSheet,
-                                      child: AnimatedContainer(
-                                        duration: const Duration(milliseconds: 220),
-                                        curve: Curves.easeInOut,
-                                        key: const ValueKey('info-button'),
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: _isSearchExpanded ? 12 : 6,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: accentColor.withValues(alpha: 0.16),
-                                          borderRadius: _toolbarButtonRadius,
-                                          border: Border.all(
-                                            color: accentColor.withValues(alpha: 0.35),
-                                            width: 1.2,
-                                          ),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: accentColor.withValues(alpha: 0.18),
-                                              blurRadius: 8,
-                                              offset: const Offset(0, 4),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          mainAxisAlignment: _isSearchExpanded
-                                              ? MainAxisAlignment.end
-                                              : MainAxisAlignment.center,
-                                          children: [
-                                            const Icon(Icons.info_outline, size: 18),
-                                            if (_isSearchExpanded) ...[
-                                              const SizedBox(width: 8),
-                                              Text(
-                                                'Info',
-                                                style:
-                                                    _toolbarLabelStyle(Colors.white),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                      ),
-                                    ),
+                                      borderWidth: _isSearchExpanded ? 2.6 : 1.2,
+                                    )),
                                   ),
-                                ),
+                                ],
                               ),
-                            ],
-                          ),
+                            );
+                          }),
                         ),
                       ),
                     ),
@@ -1314,7 +1677,6 @@ class _HelloScreenState extends State<HelloScreen>
                 ),
               ),
             ),
-          ),
             if (_isRouteZoneMode)
               Positioned.fill(
                 child: Listener(
@@ -1363,220 +1725,265 @@ class _HelloScreenState extends State<HelloScreen>
           top: false,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: navGradient,
-                borderRadius: _chromeBorderRadius,
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.18),
-                ),
-                boxShadow: _elevatedShadow,
-              ),
-              child: ShaderMask(
-                shaderCallback: (Rect bounds) =>
-                    _navEdgeFadeGradient.createShader(bounds),
-                blendMode: ui.BlendMode.dstIn,
-                child: ClipRRect(
-                  borderRadius: _chromeBorderRadius,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: navGradient,
-                        borderRadius: _chromeBorderRadius,
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.08),
+            child: ClipRRect(
+              borderRadius: _chromeBorderRadius,
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: _chromeBorderRadius,
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.25),
+                    ),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withOpacity(0.2),
+                        Colors.white.withOpacity(0.08),
+                        Colors.white.withOpacity(0.04),
+                      ],
+                      stops: const [0.0, 0.45, 1.0],
+                    ),
+                    boxShadow: _elevatedShadow,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: _chromeBorderRadius,
+                    child: Padding(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: navGradient,
+                          borderRadius: _chromeBorderRadius,
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.08),
+                          ),
+                          boxShadow: _elevatedShadow,
                         ),
-                        boxShadow: _elevatedShadow,
-                      ),
-                      child: navSuppressed
-                          ? SizedBox(
-                              height: 66,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: (isAvoidFocus
-                                          ? _clearButtonBase
-                                          : _routeZoneAccent)
-                                      .withValues(alpha: 0.2),
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(
+                        child: navSuppressed
+                            ? SizedBox(
+                                height: 66,
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
                                     color: (isAvoidFocus
                                             ? _clearButtonBase
                                             : _routeZoneAccent)
-                                        .withValues(alpha: 0.38),
-                                    width: 1.2,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
+                                        .withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(
                                       color: (isAvoidFocus
                                               ? _clearButtonBase
                                               : _routeZoneAccent)
-                                          .withValues(alpha: 0.22),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 4),
+                                          .withValues(alpha: 0.38),
+                                      width: 1.2,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: (isAvoidFocus
+                                                ? _clearButtonBase
+                                                : _routeZoneAccent)
+                                            .withValues(alpha: 0.22),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: TextButton.icon(
+                                    style: TextButton.styleFrom(
+                                      foregroundColor:
+                                          focusFrameIconColor ?? Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 28,
+                                        vertical: 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(18),
+                                      ),
+                                    ),
+                                    onPressed: isAvoidFocus
+                                        ? _exitAvoidAreaMode
+                                        : (_isRouteZoneMode
+                                            ? _cancelRouteZoneMode
+                                            : _exitRouteZoneEditMode),
+                                    icon: const Icon(Icons.close),
+                                    label: Text(
+                                      isAvoidFocus ? 'Exit edit mode' : 'Exit zone mode',
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : NavigationBarTheme(
+                                data: NavigationBarThemeData(
+                                  height: 66,
+                                  indicatorShape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  indicatorColor: Colors.transparent,
+                                  overlayColor: WidgetStateProperty.resolveWith(
+                                    (states) => states.contains(WidgetState.pressed)
+                                        ? accentColor.withValues(alpha: 0.18)
+                                        : Colors.transparent,
+                                  ),
+                                  labelTextStyle:
+                                      WidgetStateProperty.resolveWith((states) {
+                                    final selected =
+                                        states.contains(WidgetState.selected);
+                                    return TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 11,
+                                      letterSpacing: 0.2,
+                                      color: selected
+                                          ? (isGenerateSelected
+                                              ? Colors.white
+                                              : accentColor)
+                                          : Colors.white.withValues(alpha: 0.8),
+                                    );
+                                  }),
+                                  iconTheme: WidgetStateProperty.resolveWith(
+                                    (states) => IconThemeData(
+                                      color: states.contains(WidgetState.selected)
+                                          ? (isGenerateSelected
+                                              ? Colors.white
+                                              : accentColor)
+                                          : Colors.white.withValues(alpha: 0.78),
+                                      size: 22,
+                                    ),
+                                  ),
+                                ),
+                                child: NavigationBar(
+                                  backgroundColor: Colors.transparent,
+                                  surfaceTintColor: Colors.transparent,
+                                  elevation: 0,
+                                  selectedIndex: _selectedToolIndex,
+                                  labelBehavior:
+                                      NavigationDestinationLabelBehavior.alwaysShow,
+                                  onDestinationSelected: (index) {
+                                    if (index == 1) {
+                                      if (_isAvoidAreaMode) {
+                                        _exitAvoidAreaMode();
+                                      } else {
+                                        _enterAvoidAreaMode();
+                                      }
+                                      return;
+                                    }
+                                    if (_isAvoidAreaMode) {
+                                      _exitAvoidAreaMode();
+                                    }
+                                    if (index == 3) {
+                                      if (_isRouteZoneMode) {
+                                        _cancelRouteZoneMode();
+                                        return;
+                                      }
+                                      _beginRouteZoneSelection();
+                                      setState(() => _selectedToolIndex = index);
+                                      return;
+                                    }
+                                    if (_isRouteZoneMode) {
+                                      _cancelRouteZoneMode();
+                                    }
+                                    if (index == 0) {
+                                      _openProfileSheet();
+                                      return;
+                                    }
+                                    if (index <= 2) {
+                                      setState(() => _selectedToolIndex = index);
+                                      return;
+                                    }
+                                    if (index == 4) {
+                                      _openDownloadSheet();
+                                    }
+                                  },
+                                  destinations: [
+                                    NavigationDestination(
+                                      icon: const Icon(Icons.tune_outlined),
+                                      selectedIcon: const Icon(Icons.tune),
+                                      label: _tr('nav.profile'),
+                                    ),
+                                    NavigationDestination(
+                                      icon: const _ToolbarAccentIcon(
+                                        iconData: Icons.block_outlined,
+                                        accentColor: _clearButtonBase,
+                                        iconColor: _clearButtonIcon,
+                                      ),
+                                      selectedIcon: const _ToolbarAccentIcon(
+                                        iconData: Icons.block,
+                                        accentColor: _clearButtonBase,
+                                        iconColor: _clearButtonIcon,
+                                      ),
+                                      label: _tr('nav.avoid'),
+                                    ),
+                                    NavigationDestination(
+                                      icon: _ToolbarAccentIcon(
+                                        iconData: Icons.play_arrow_outlined,
+                                        accentColor: accentColor,
+                                      ),
+                                      selectedIcon: _ToolbarAccentIcon(
+                                        iconData: Icons.play_arrow,
+                                        accentColor: accentColor,
+                                      ),
+                                      label: _tr('nav.generate'),
+                                    ),
+                                    NavigationDestination(
+                                      icon: const _ToolbarAccentIcon(
+                                        iconData: Icons.crop_free,
+                                        accentColor: Color(0xFF5C2C92),
+                                        iconColor: Color(0xFFE9D7FF),
+                                      ),
+                                      selectedIcon: const _ToolbarAccentIcon(
+                                        iconData: Icons.crop_square,
+                                        accentColor: Color(0xFF5C2C92),
+                                        iconColor: Color(0xFFE9D7FF),
+                                      ),
+                                      label: _tr('nav.routeZone'),
+                                    ),
+                                    NavigationDestination(
+                                      icon: const Icon(Icons.download_outlined),
+                                      selectedIcon: const Icon(Icons.download),
+                                      label: _tr('nav.download'),
                                     ),
                                   ],
                                 ),
-                                child: TextButton.icon(
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: focusFrameIconColor ?? Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 28,
-                                      vertical: 12,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(18),
-                                    ),
-                                  ),
-                                  onPressed: isAvoidFocus
-                                      ? _exitAvoidAreaMode
-                                      : (_isRouteZoneMode
-                                          ? _cancelRouteZoneMode
-                                          : _exitRouteZoneEditMode),
-                                  icon: const Icon(Icons.close),
-                                  label: Text(
-                                    isAvoidFocus ? 'Exit edit mode' : 'Exit zone mode',
-                                  ),
-                                ),
                               ),
-                            )
-                          : NavigationBarTheme(
-                              data: NavigationBarThemeData(
-                                height: 66,
-                                indicatorShape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                indicatorColor: Colors.transparent,
-                                overlayColor: WidgetStateProperty.resolveWith(
-                                  (states) => states.contains(WidgetState.pressed)
-                                      ? accentColor.withValues(alpha: 0.18)
-                                      : Colors.transparent,
-                                ),
-                                labelTextStyle:
-                                    WidgetStateProperty.resolveWith((states) {
-                                  final selected =
-                                      states.contains(WidgetState.selected);
-                                  return TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 11,
-                                    letterSpacing: 0.2,
-                                    color: selected
-                                        ? (isGenerateSelected
-                                            ? Colors.white
-                                            : accentColor)
-                                        : Colors.white.withValues(alpha: 0.8),
-                                  );
-                                }),
-                                iconTheme: WidgetStateProperty.resolveWith(
-                                  (states) => IconThemeData(
-                                    color: states.contains(WidgetState.selected)
-                                        ? (isGenerateSelected
-                                            ? Colors.white
-                                            : accentColor)
-                                        : Colors.white.withValues(alpha: 0.78),
-                                    size: 22,
-                                  ),
-                                ),
-                              ),
-                              child: NavigationBar(
-                                backgroundColor: Colors.transparent,
-                                surfaceTintColor: Colors.transparent,
-                                elevation: 0,
-                                selectedIndex: _selectedToolIndex,
-                                labelBehavior:
-                                    NavigationDestinationLabelBehavior.alwaysShow,
-                        onDestinationSelected: (index) {
-                          if (index == 1) {
-                            if (_isAvoidAreaMode) {
-                              _exitAvoidAreaMode();
-                            } else {
-                              _enterAvoidAreaMode();
-                            }
-                            return;
-                          }
-                          if (_isAvoidAreaMode) {
-                            _exitAvoidAreaMode();
-                          }
-                          if (index == 3) {
-                            if (_isRouteZoneMode) {
-                              _cancelRouteZoneMode();
-                              return;
-                            }
-                            _beginRouteZoneSelection();
-                            setState(() => _selectedToolIndex = index);
-                            return;
-                          }
-                          if (_isRouteZoneMode) {
-                            _cancelRouteZoneMode();
-                          }
-                          if (index == 0) {
-                            _openProfileSheet();
-                            return;
-                          }
-                          if (index <= 2) {
-                            setState(() => _selectedToolIndex = index);
-                            return;
-                          }
-                          if (index == 4) {
-                            // TODO: Download action
-                          }
-                        },
-                                destinations: [
-                                  NavigationDestination(
-                                    icon: const Icon(Icons.tune_outlined),
-                                    selectedIcon: const Icon(Icons.tune),
-                                    label: _tr('nav.profile'),
-                                  ),
-                                  NavigationDestination(
-                                    icon: const _ToolbarAccentIcon(
-                                      iconData: Icons.block_outlined,
-                                      accentColor: _clearButtonBase,
-                                      iconColor: _clearButtonIcon,
-                                    ),
-                                    selectedIcon: const _ToolbarAccentIcon(
-                                      iconData: Icons.block,
-                                      accentColor: _clearButtonBase,
-                                      iconColor: _clearButtonIcon,
-                                    ),
-                                    label: _tr('nav.avoid'),
-                                  ),
-                                  NavigationDestination(
-                                    icon: _ToolbarAccentIcon(
-                                      iconData: Icons.play_arrow_outlined,
-                                      accentColor: accentColor,
-                                    ),
-                                    selectedIcon: _ToolbarAccentIcon(
-                                      iconData: Icons.play_arrow,
-                                      accentColor: accentColor,
-                                    ),
-                                    label: _tr('nav.generate'),
-                                  ),
-                                  NavigationDestination(
-                                    icon: const _ToolbarAccentIcon(
-                                      iconData: Icons.crop_free,
-                                      accentColor: Color(0xFF5C2C92),
-                                      iconColor: Color(0xFFE9D7FF),
-                                    ),
-                                    selectedIcon: const _ToolbarAccentIcon(
-                                      iconData: Icons.crop_square,
-                                      accentColor: Color(0xFF5C2C92),
-                                      iconColor: Color(0xFFE9D7FF),
-                                    ),
-                                    label: _tr('nav.routeZone'),
-                                  ),
-                                  NavigationDestination(
-                                    icon: const Icon(Icons.download_outlined),
-                                    selectedIcon: const Icon(Icons.download),
-                                    label: _tr('nav.download'),
-                                  ),
-                                ],
-                              ),
-                            ),
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _glassSheetShell({required Widget child}) {
+    final navGradient = navPulseGradient(_navPulseValue);
+    return ClipRRect(
+      borderRadius: _chromeBorderRadius,
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: _chromeBorderRadius,
+            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color.fromRGBO(255, 255, 255, 0.12),
+                Color.fromRGBO(255, 255, 255, 0.04),
+              ],
+            ),
+            boxShadow: _elevatedShadow,
+          ),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: navGradient,
+              borderRadius: _chromeBorderRadius,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: child,
           ),
         ),
       ),
@@ -1588,16 +1995,18 @@ extension HelloScreenActions on _HelloScreenState {
   Future<void> _openDistanceSheet() async {
     double _milesFromUnit(double value, int unit) {
       if (unit == 1) return value / 1.60934;
+      if (unit == 2) return value * _activeFunUnit.milesPerUnit;
       return value;
     }
 
     double _unitFromMiles(double miles, int unit) {
       if (unit == 1) return miles * 1.60934;
+      if (unit == 2) return miles / _activeFunUnit.milesPerUnit;
       return miles;
     }
 
     String _formatDistance(double value, int unit) {
-      final bool useOneDecimal = unit == 1;
+      final bool useOneDecimal = unit == 1 || unit == 2;
       final double rounded =
           useOneDecimal ? double.parse(value.toStringAsFixed(1)) : value;
       return rounded % 1 == 0
@@ -1681,35 +2090,37 @@ extension HelloScreenActions on _HelloScreenState {
                           ),
                         ],
                       ),
-                    const SizedBox(height: 20),
-                    TextField(
-                      controller: controller,
-                      autofocus: true,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.flag_rounded),
-                        suffixText: 'mi',
-                        labelText: 'Distance in miles',
-                        filled: true,
-                        border: const OutlineInputBorder(
-                          borderRadius: BorderRadius.all(Radius.circular(18)),
-                        ),
-                        errorText: errorText,
-                      ),
-                      onChanged: (value) {
-                        final parsed = double.tryParse(value);
-                        setSheetState(() {
-                          if (parsed == null || parsed <= 0) {
-                            errorText = 'Enter a positive distance';
-                          } else {
-                            errorText = null;
-                            tentativeMiles = parsed;
-                          }
-                        });
-                      },
-                    ),
+                      const SizedBox(height: 12),
+                      Builder(builder: (context) {
+                        final unitLabel = _distanceUnit == 0
+                            ? 'mi'
+                            : _distanceUnit == 1
+                                ? 'km'
+                                : _funUnitShortLabel;
+                        return TextField(
+                          controller: controller,
+                          keyboardType:
+                              const TextInputType.numberWithOptions(decimal: true),
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            labelText: 'Distance in $unitLabel',
+                            prefixIcon: const Icon(Icons.straighten_outlined),
+                            suffixText: unitLabel,
+                            errorText: errorText,
+                          ),
+                          onChanged: (value) {
+                            final parsed = double.tryParse(value);
+                            setSheetState(() {
+                              if (parsed == null || parsed <= 0) {
+                                errorText = 'Enter a positive distance';
+                              } else {
+                                errorText = null;
+                                tentativeMiles = parsed;
+                              }
+                            });
+                          },
+                        );
+                      }),
                       const SizedBox(height: 16),
                       Wrap(
                         spacing: 10,
@@ -1721,7 +2132,7 @@ extension HelloScreenActions on _HelloScreenState {
                               ? _tr('unit.miShort')
                               : _distanceUnit == 1
                                   ? _tr('unit.kmShort')
-                                  : _tr('unit.randomShort');
+                                  : _funUnitShortLabel;
                           final label =
                               '${_formatDistance(entryValue, _distanceUnit)} $unitLabel';
                           final bool isSelected =
@@ -1771,13 +2182,32 @@ extension HelloScreenActions on _HelloScreenState {
                           const SizedBox(width: 12),
                           Expanded(
                             child: _SettingsUnitChip(
-                              label: _tr('unit.random'),
+                          label: 'Random',
                               icon: Icons.shuffle,
                               selected: _distanceUnit == 2,
                               accentColor: accentColor,
                               onTap: () {
-                                setSheetState(() => _distanceUnit = 2);
-                                setState(() => _distanceUnit = 2);
+                            setSheetState(() {
+                              final milesValue =
+                                  _milesFromUnit(tentativeMiles, _distanceUnit);
+                              int nextIndex = _funUnitIndex;
+                              if (_HelloScreenState._funUnits.length > 1) {
+                                do {
+                                  nextIndex =
+                                      _rng.nextInt(_HelloScreenState._funUnits.length);
+                                } while (nextIndex == _funUnitIndex);
+                              }
+                              _funUnitIndex = nextIndex;
+                              final converted = _unitFromMiles(milesValue, 2);
+                              tentativeMiles = converted;
+                              controller.text = _formatDistance(converted, 2);
+                              errorText = null;
+                              _distanceUnit = 2;
+                            });
+                            setState(() {
+                              _distanceUnit = 2;
+                              _funUnitIndex = _funUnitIndex;
+                            });
                               },
                             ),
                           ),
@@ -1833,13 +2263,7 @@ extension HelloScreenActions on _HelloScreenState {
             final sliderLabel = '${(_buttonScale * 100).round()}%';
             return Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: _chromePanelGradient,
-                  borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-                  boxShadow: _elevatedShadow,
-                ),
+              child: _glassSheetShell(
                 child: Padding(
                   padding: const EdgeInsets.all(20),
                   child: Column(
@@ -2087,13 +2511,7 @@ extension HelloScreenActions on _HelloScreenState {
             constraints: BoxConstraints(maxHeight: maxHeight),
             child: StatefulBuilder(
               builder: (context, setSheetState) {
-                return Container(
-                  decoration: BoxDecoration(
-                    gradient: _chromePanelGradient,
-                    borderRadius: BorderRadius.circular(32),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-                    boxShadow: _elevatedShadow,
-                  ),
+                return _glassSheetShell(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
                     child: Column(
@@ -2259,13 +2677,7 @@ extension HelloScreenActions on _HelloScreenState {
           builder: (context, setSheetState) {
             return Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: _chromePanelGradient,
-                  borderRadius: BorderRadius.circular(32),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-                  boxShadow: _elevatedShadow,
-                ),
+              child: _glassSheetShell(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
                   child: Column(
@@ -2328,13 +2740,14 @@ extension HelloScreenActions on _HelloScreenState {
                                   setState(() => _selectedModeIndex = index);
                                   setSheetState(() {});
                                 },
-                                child: _ModeOptionTile(
-                                  option: option,
-                                  selected: selected,
+                                  child: _ModeOptionTile(
+                                    option: option,
+                                    selected: selected,
+                                    pulse: _navPulseValue,
+                                  ),
                                 ),
                               ),
-                            ),
-                          );
+                            );
                         },
                       ),
                     ],
@@ -2348,6 +2761,116 @@ extension HelloScreenActions on _HelloScreenState {
     );
     if (!mounted) return;
     setState(() => _isModeSheetOpen = false);
+  }
+
+  Future<void> _openDownloadSheet() async {
+    if (_isDownloadSheetOpen) return;
+    setState(() => _isDownloadSheetOpen = true);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      useSafeArea: true,
+      barrierColor: Colors.black.withOpacity(0.65),
+      builder: (sheetContext) {
+        final media = MediaQuery.of(sheetContext);
+        final maxHeight = media.size.height - 80;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            child: StatefulBuilder(builder: (context, setSheetState) {
+              return _glassSheetShell(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withValues(alpha: 0.08),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.12),
+                              ),
+                            ),
+                            child: const Icon(Icons.download, color: Colors.white, size: 18),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: const [
+                                Text(
+                                  'Export route',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  'Choose your preferred download format',
+                                  style: TextStyle(fontSize: 13),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Close',
+                            onPressed: () => Navigator.of(sheetContext).pop(),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      ...List.generate(_downloadOptions.length, (index) {
+                        final option = _downloadOptions[index];
+                        final selected = index == _selectedDownloadIndex;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(28),
+                              onTap: () {
+                                setState(() => _selectedDownloadIndex = index);
+                                setSheetState(() {});
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('${option.title} download coming soon'),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              },
+                              child: _DownloadOptionTile(
+                                option: option,
+                                selected: selected,
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ),
+        );
+      },
+    );
+    if (!mounted) return;
+    setState(() => _isDownloadSheetOpen = false);
+  }
+
+  void _openAccountPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const AccountScreen()),
+    );
   }
 
   void _openProfileSheet() {
@@ -2900,18 +3423,7 @@ extension HelloScreenActions on _HelloScreenState {
       builder: (sheetContext) {
         return Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-          child: Container(
-            decoration: BoxDecoration(
-              color: _sherpaBg,
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: const [
-                BoxShadow(
-                  color: Colors.black38,
-                  blurRadius: 28,
-                  offset: Offset(0, 16),
-                ),
-              ],
-            ),
+          child: _glassSheetShell(
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -2921,7 +3433,7 @@ extension HelloScreenActions on _HelloScreenState {
                   Row(
                     children: [
                       CircleAvatar(
-                        backgroundColor: accentColor.withValues(alpha: 0.16),
+                        backgroundColor: Colors.white.withOpacity(0.12),
                         child: Icon(Icons.query_stats, color: accentColor),
                       ),
                       const SizedBox(width: 16),
@@ -2957,9 +3469,9 @@ extension HelloScreenActions on _HelloScreenState {
                     height: 160,
                     decoration: BoxDecoration(
                       borderRadius: _chromeBorderRadius,
-                      color: _chromePanelBg,
+                      color: Colors.white.withOpacity(0.05),
                       border: Border.all(
-                        color: accentColor.withValues(alpha: 0.2),
+                        color: Colors.white.withOpacity(0.18),
                       ),
                     ),
                     child: Center(
@@ -3055,19 +3567,6 @@ extension HelloScreenActions on _HelloScreenState {
           ),
         );
       },
-    );
-  }
-
-  LinearGradient _navGradientForPulse(double pulse) {
-    final edgeStart =
-        Color.lerp(_navEdgeBase.withOpacity(0.75), _navEdgeBase.withOpacity(0.4), pulse)!;
-    final center =
-        Color.lerp(_navCenterBase.withOpacity(0.95), _navCenterBase.withOpacity(0.6), pulse)!;
-    return LinearGradient(
-      begin: Alignment.centerLeft,
-      end: Alignment.centerRight,
-      colors: [edgeStart, center, edgeStart],
-      stops: const [0.0, 0.5, 1.0],
     );
   }
 
@@ -4549,12 +5048,14 @@ class _DualTrackPainter extends CustomPainter {
 
 class _DistanceBadge extends StatelessWidget {
   const _DistanceBadge({
-    required this.miles,
+    required this.value,
+    required this.unitLabel,
     required this.onTap,
     this.expanded = false,
   });
 
-  final double miles;
+  final double value;
+  final String unitLabel;
   final VoidCallback onTap;
   final bool expanded;
 
@@ -4563,16 +5064,16 @@ class _DistanceBadge extends StatelessWidget {
     final theme = Theme.of(context);
     final primaryText = theme.colorScheme.onSurface;
     final secondaryText = theme.colorScheme.onSurfaceVariant;
-    final formattedMiles = miles.toStringAsFixed(1);
+    final formattedValue = value >= 100 ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: _distanceButtonRadius,
         onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeInOut,
+                                              child: AnimatedContainer(
+                                              duration: const Duration(milliseconds: 240),
+                                              curve: Curves.easeInOut,
           padding: EdgeInsets.symmetric(
             vertical: 6,
             horizontal: expanded ? 12 : 8,
@@ -4602,7 +5103,8 @@ class _DistanceBadge extends StatelessWidget {
             ],
           ),
           child: AnimatedSize(
-            duration: const Duration(milliseconds: 220),
+            // Keep the badge expansion speed in sync with the toolbar buttons.
+            duration: const Duration(milliseconds: 240),
             curve: Curves.easeInOut,
             alignment: Alignment.center,
             child: Column(
@@ -4634,7 +5136,7 @@ class _DistanceBadge extends StatelessWidget {
                     ),
                     SizedBox(width: expanded ? 6 : 4),
                     Text(
-                      formattedMiles,
+                      formattedValue,
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 13,
@@ -4643,7 +5145,7 @@ class _DistanceBadge extends StatelessWidget {
                     ),
                     const SizedBox(width: 3),
                     Text(
-                      'mi',
+                      unitLabel,
                       style: TextStyle(
                         fontSize: 10,
                         letterSpacing: 0.8,
@@ -4655,6 +5157,844 @@ class _DistanceBadge extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DownloadOption {
+  const _DownloadOption({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+}
+
+class _DownloadOptionTile extends StatelessWidget {
+  const _DownloadOptionTile({required this.option, this.selected = false});
+
+  final _DownloadOption option;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = _bikeAccent;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInOut,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: selected
+              ? [
+                  accent.withOpacity(0.24),
+                  accent.withOpacity(0.12),
+                ]
+              : [
+                  Colors.white.withOpacity(0.05),
+                  Colors.white.withOpacity(0.02),
+                ],
+        ),
+        border: Border.all(
+          color: selected
+              ? Colors.white.withOpacity(0.7)
+              : Colors.white.withOpacity(0.18),
+          width: selected ? 2 : 1,
+        ),
+        boxShadow: selected
+            ? [
+                BoxShadow(
+                  color: accent.withOpacity(0.35),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ]
+            : _elevatedShadow,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withOpacity(selected ? 0.16 : 0.08),
+              border: Border.all(
+                color: Colors.white.withOpacity(selected ? 0.35 : 0.18),
+              ),
+            ),
+            child: Icon(option.icon,
+                size: 20,
+                color: selected ? Colors.white : Colors.white.withOpacity(0.9)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  option.title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  option.subtitle,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: Colors.white70,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          AnimatedOpacity(
+            duration: const Duration(milliseconds: 200),
+            opacity: selected ? 1 : 0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                color: Colors.white.withOpacity(0.12),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.25),
+                ),
+              ),
+              child: const Text(
+                'Selected',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class AccountScreen extends StatelessWidget {
+  const AccountScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final accent = _bikeAccent;
+    final navBg = navPulseGradient(0.4);
+    return Scaffold(
+      backgroundColor: _sherpaBg,
+      body: Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  _navEdgeBase.withOpacity(0.9),
+                  _navCenterBase.withOpacity(0.75),
+                  _sherpaBg,
+                ],
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => Navigator.of(context).maybePop(),
+                        icon: const Icon(Icons.arrow_back),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Account',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  _GlassBlock(
+                    gradient: navBg,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 28,
+                            backgroundColor: accent.withOpacity(0.2),
+                            child: const Icon(Icons.account_circle, size: 36),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Aoife Explorer',
+                                  style: theme.textTheme.titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'aoife@example.com',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 6,
+                                  children: const [
+                                    _BadgeChip(icon: Icons.verified, label: 'Pro'),
+                                    _BadgeChip(icon: Icons.route, label: 'Routes synced'),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: ListView(
+                      children: [
+                        _GlassBlock(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Preferences',
+                                  style: theme.textTheme.titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 12),
+                                _AccountTile(
+                                  icon: Icons.palette_outlined,
+                                  title: 'Theme',
+                                  subtitle: 'Adaptive (Material 3)',
+                                ),
+                                _AccountTile(
+                                  icon: Icons.language_outlined,
+                                  title: 'Language',
+                                  subtitle: 'English (US)',
+                                ),
+                                _AccountTile(
+                                  icon: Icons.notifications_outlined,
+                                  title: 'Notifications',
+                                  subtitle: 'Weekly digests & reminders',
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _GlassBlock(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Security',
+                                  style: theme.textTheme.titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 12),
+                                _AccountTile(
+                                  icon: Icons.lock_outline,
+                                  title: 'Password',
+                                  subtitle: 'Last updated 32 days ago',
+                                ),
+                                _AccountTile(
+                                  icon: Icons.fingerprint,
+                                  title: 'Biometric unlock',
+                                  subtitle: 'Enabled on this device',
+                                ),
+                                _AccountTile(
+                                  icon: Icons.devices_other_outlined,
+                                  title: 'Devices',
+                                  subtitle: '3 active devices',
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _GlassBlock(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Storage',
+                                  style: theme.textTheme.titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 12),
+                                _AccountTile(
+                                  icon: Icons.cloud_done_outlined,
+                                  title: 'Cloud sync',
+                                  subtitle: 'Healthy · 256 routes',
+                                ),
+                                _AccountTile(
+                                  icon: Icons.download_outlined,
+                                  title: 'Offline maps',
+                                  subtitle: 'Pacific NW · 1.2 GB',
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Center(
+                          child: Text(
+                            'More coming soon',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: Colors.white60,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BadgeChip extends StatelessWidget {
+  const _BadgeChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.white),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AccountTile extends StatelessWidget {
+  const _AccountTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              gradient: LinearGradient(
+                colors: [
+                  Colors.white.withOpacity(0.16),
+                  Colors.white.withOpacity(0.06),
+                ],
+              ),
+              border: Border.all(color: Colors.white.withOpacity(0.16)),
+            ),
+            child: Icon(icon, size: 18, color: Colors.white),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.white70,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right, color: Colors.white70),
+        ],
+      ),
+    );
+  }
+}
+
+class _AppTitleBadge extends StatelessWidget {
+  const _AppTitleBadge({
+    required this.gradient,
+    this.subtitle,
+    this.compact = false,
+  });
+
+  final Gradient gradient;
+  final String? subtitle;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final accentColor = gradient is LinearGradient &&
+            (gradient as LinearGradient).colors.isNotEmpty
+        ? (gradient as LinearGradient).colors[1]
+        : _bikeAccent;
+    final semanticsLabel = subtitle ?? 'Route Studio';
+    final baseTitleStyle = GoogleFonts.albertSans(
+      fontSize: compact ? 18 : 22,
+      fontWeight: FontWeight.w800,
+      letterSpacing: 0.8,
+      color: Colors.white,
+    );
+    final highlightStyle = baseTitleStyle.copyWith(
+      letterSpacing: 1.2,
+      color: Colors.white.withOpacity(0.9),
+      shadows: [
+        const Shadow(
+          color: Color(0x99000000),
+          blurRadius: 12,
+          offset: Offset(0, 4),
+        ),
+        Shadow(
+          color: accentColor.withOpacity(0.5),
+          blurRadius: 18,
+          offset: const Offset(0, 8),
+        ),
+      ],
+    );
+    final mutedStyle = baseTitleStyle.copyWith(
+      fontSize: compact ? 17 : 21,
+      letterSpacing: 1.2,
+      color: Colors.white.withOpacity(0.9),
+      shadows: const [
+        Shadow(
+          color: Color(0x66000000),
+          blurRadius: 10,
+          offset: Offset(0, 4),
+        ),
+      ],
+    );
+
+    return ClipRRect(
+      borderRadius: _chromeBorderRadius,
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: _chromeBorderRadius,
+            gradient: LinearGradient(
+              begin: const Alignment(-1, -1),
+              end: const Alignment(1, 1),
+              colors: [
+                Colors.white.withOpacity(0.035),
+                Colors.white.withOpacity(0.008),
+              ],
+            ),
+            border: Border.all(color: Colors.white.withOpacity(0.01)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x33000000),
+                blurRadius: 24,
+                spreadRadius: 1.5,
+                offset: Offset(0, 12),
+              ),
+              BoxShadow(
+                color: Color(0x19000000),
+                blurRadius: 12,
+                spreadRadius: 0.5,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+            child: Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: compact ? 16 : 20,
+                vertical: compact ? 12 : 14,
+              ),
+            decoration: BoxDecoration(
+              borderRadius: _chromeBorderRadius,
+              border: Border.all(color: Colors.white.withOpacity(0.02)),
+              color: Colors.black.withOpacity(0.3),
+            ),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            colors: [
+                              accentColor.withOpacity(0.9),
+                              Colors.white.withOpacity(0.85),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: accentColor.withOpacity(0.45),
+                              blurRadius: 22,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                          border: Border.all(color: Colors.white.withOpacity(0.6)),
+                        ),
+                        child: const Padding(
+                          padding: EdgeInsets.all(10),
+                          child: Icon(
+                            Icons.alt_route_rounded,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Semantics(
+                        label: semanticsLabel,
+                        child: RichText(
+                          textAlign: TextAlign.center,
+                          text: TextSpan(
+                            children: [
+                              TextSpan(text: 'ROUTE ', style: highlightStyle),
+                              TextSpan(text: 'STUDIO', style: mutedStyle),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 90,
+                          height: 1.4,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Colors.white.withOpacity(0.05),
+                                accentColor.withOpacity(0.9),
+                                Colors.white.withOpacity(0.05),
+                              ],
+                              stops: const [0.0, 0.5, 1.0],
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.public, size: 16, color: Colors.white70),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Sherpa Map',
+                                style: GoogleFonts.albertSans(
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.2,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          width: 90,
+                          height: 1.4,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Colors.white.withOpacity(0.05),
+                                accentColor.withOpacity(0.9),
+                                Colors.white.withOpacity(0.05),
+                              ],
+                              stops: const [0.0, 0.5, 1.0],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TitleCard extends StatelessWidget {
+  const _TitleCard({
+    required this.gradient,
+    required this.title,
+    this.subtitle,
+  });
+
+  final Gradient gradient;
+  final String title;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: _chromeBorderRadius,
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: _chromeBorderRadius,
+            gradient: LinearGradient(
+              begin: const Alignment(-1, -1),
+              end: const Alignment(1, 1),
+              colors: [
+                Colors.white.withOpacity(0.048),
+                Colors.white.withOpacity(0.012),
+              ],
+            ),
+            border: Border.all(color: Colors.white.withOpacity(0.02)),
+            boxShadow: _elevatedShadow,
+          ),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: gradient.colors
+                          .map((c) => c.withOpacity(0.16))
+                          .toList(),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: _chromeBorderRadius,
+                    color: Colors.black.withOpacity(0.14),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withOpacity(0.05),
+                        Colors.white.withOpacity(0.0),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: BoxDecoration(
+                  borderRadius: _chromeBorderRadius,
+                  border: Border.all(color: Colors.white.withOpacity(0.05)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      title.toUpperCase(),
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.albertSans(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.1,
+                        color: Colors.white,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        subtitle!,
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.albertSans(
+                          fontSize: 13,
+                          letterSpacing: 0.3,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GlassBlock extends StatelessWidget {
+  const _GlassBlock({required this.child, this.gradient});
+
+  final Widget child;
+  final Gradient? gradient;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: _chromeBorderRadius,
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: _chromeBorderRadius,
+            border: Border.all(color: Colors.white.withOpacity(0.01)),
+            gradient: gradient ??
+                const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color.fromRGBO(255, 255, 255, 0.01),
+                    Color.fromRGBO(255, 255, 255, 0.002),
+                  ],
+                ),
+            boxShadow: _elevatedShadow,
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _GlassTitleText extends StatelessWidget {
+  const _GlassTitleText(
+    this.text, {
+    required this.fontSize,
+    required this.letterSpacing,
+  });
+
+  final String text;
+  final double fontSize;
+  final double letterSpacing;
+
+  @override
+  Widget build(BuildContext context) {
+    final baseStyle = GoogleFonts.albertSans(
+      fontSize: fontSize,
+      fontWeight: FontWeight.w800,
+      letterSpacing: letterSpacing,
+      color: Colors.white,
+      shadows: const [
+        Shadow(color: Color(0x33000000), blurRadius: 8, offset: Offset(0, 3)),
+        Shadow(color: Color(0x22000000), blurRadius: 16, offset: Offset(0, 8)),
+      ],
+    );
+
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: ShaderMask(
+          shaderCallback: (bounds) {
+            return LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withOpacity(0.9),
+                Colors.white.withOpacity(0.55),
+                Colors.white.withOpacity(0.85),
+              ],
+              stops: const [0.0, 0.5, 1.0],
+            ).createShader(bounds);
+          },
+          blendMode: BlendMode.srcATop,
+          child: Text(
+            text,
+            textAlign: TextAlign.center,
+            style: baseStyle,
           ),
         ),
       ),
@@ -4900,8 +6240,9 @@ class _LayerOptionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final textColor = Colors.white.withValues(alpha: 0.92);
     final gradient = LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
+      // Center the sweep across both axes to mirror the nav bar pulse.
+      begin: const Alignment(-1.0, -1.0),
+      end: const Alignment(1.0, 1.0),
       colors: option.background,
     );
     return Container(
@@ -5290,17 +6631,26 @@ const Map<String, Map<String, String>> _localizedStrings = {
 
 
 class _ModeOptionTile extends StatelessWidget {
-  const _ModeOptionTile({required this.option, required this.selected});
+  const _ModeOptionTile({
+    required this.option,
+    required this.selected,
+    required this.pulse,
+  });
 
   final _ModeOption option;
   final bool selected;
+  final double pulse;
 
   @override
   Widget build(BuildContext context) {
+    final Color c0 = option.background.first;
+    final Color c1 =
+        option.background.length > 1 ? option.background[1] : option.background.first;
     final gradient = LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: option.background,
+      begin: const Alignment(-1.0, -1.0),
+      end: const Alignment(1.0, 1.0),
+      colors: [c0, c1, c0],
+      stops: const [0.0, 0.5, 1.0],
     );
     final textColor = Colors.white.withValues(alpha: 0.92);
     return Container(
@@ -5311,17 +6661,19 @@ class _ModeOptionTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(28),
         border: Border.all(
           color: selected
-              ? option.accentColor.withValues(alpha: 0.9)
-              : Colors.white.withValues(alpha: 0.08),
-          width: 1.4,
+              ? Colors.white.withValues(alpha: 0.75)
+              : Colors.white.withValues(alpha: 0.12),
+          width: selected ? 2 : 1.4,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: option.accentColor.withValues(alpha: selected ? 0.35 : 0.2),
-            blurRadius: selected ? 28 : 18,
-            offset: const Offset(0, 14),
-          ),
-        ],
+        boxShadow: selected
+            ? [
+                BoxShadow(
+                  color: option.accentColor.withOpacity(0.35),
+                  blurRadius: 28,
+                  offset: const Offset(0, 14),
+                ),
+              ]
+            : _elevatedShadow,
       ),
       child: Row(
         children: [
@@ -5329,9 +6681,9 @@ class _ModeOptionTile extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.black.withValues(alpha: 0.2),
+              color: Colors.white.withOpacity(0.08),
               border: Border.all(
-                color: option.accentColor.withValues(alpha: 0.6),
+                color: option.accentColor.withValues(alpha: 0.55),
                 width: 1.4,
               ),
             ),
@@ -5486,19 +6838,18 @@ class _SettingsUnitChip extends StatelessWidget {
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(icon, size: 14, color: iconColor),
                 const SizedBox(width: 6),
-                Expanded(
-                  child: _AdaptiveText(
-                    label,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: iconColor,
-                      fontSize: 11,
-                    ),
-                    alignment: Alignment.centerLeft,
+                _AdaptiveText(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: iconColor,
+                    fontSize: 11,
                   ),
+                  alignment: Alignment.center,
                 ),
               ],
             ),
@@ -5775,3 +7126,10 @@ class _AvoidHandleHit {
 }
 
 enum _RouteZoneHandle { northWest, northEast, southEast, southWest }
+
+class _FunUnit {
+  const _FunUnit(this.name, {required this.milesPerUnit});
+
+  final String name;
+  final double milesPerUnit;
+}
