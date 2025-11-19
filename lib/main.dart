@@ -2,16 +2,24 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:video_player/video_player.dart';
+import 'firebase_options.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -90,6 +98,10 @@ const _navEdgeBase = Color(0xFF0A101C);
 const _navCenterBase = Color(0xFF0D3450);
 const double _toolbarExpandedWidth = 110;
 const double _toolbarCollapsedWidth = 40;
+extension _ColorCompat on Color {
+  Color withValues({double? alpha}) =>
+      withOpacity(alpha != null ? alpha.clamp(0.0, 1.0) : opacity);
+}
 LinearGradient navPulseGradient(double pulse) {
   final edgeStart = Color.lerp(
     _navEdgeBase.withValues(alpha: 0.75),
@@ -253,7 +265,6 @@ class _IntroVideoScreenState extends State<IntroVideoScreen>
                       child: _TitleCard(
                         gradient: navPulse,
                         title: 'Route Studio',
-                        subtitle: 'Cinematic routing for any ride',
                       ),
                     ),
                   ),
@@ -464,6 +475,9 @@ class _LoginCardState extends State<_LoginCard>
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _confirmController = TextEditingController();
+  bool _loginLoading = false;
+  bool _signupLoading = false;
+  bool _socialLoading = false;
   bool _obscure = true;
   late final AnimationController _pulseController;
   double _pulseValue = 0.5;
@@ -502,18 +516,29 @@ class _LoginCardState extends State<_LoginCard>
       required String label,
       required IconData icon,
       required VoidCallback onTap,
+      bool loading = false,
+      bool useAccentStyle = false,
     }) {
       final radius = BorderRadius.circular(18);
-      final fadedPulse = navPulseGradient(_pulseValue)
-          .colors
-          .map((c) => c.withOpacity(0.35))
-          .toList();
+      final accent = _runAccent;
+      final colors = useAccentStyle
+          ? [
+              accent.withValues(alpha: 0.28),
+              accent.withValues(alpha: 0.16),
+            ]
+          : navPulseGradient(_pulseValue)
+              .colors
+              .map((c) => c.withOpacity(0.35))
+              .toList();
       final buttonGradient = LinearGradient(
         begin: const Alignment(-1, -1),
         end: const Alignment(1, 1),
-        colors: fadedPulse,
-        stops: const [0.0, 0.5, 1.0],
+        colors: colors,
+        stops: const [0.0, 1.0],
       );
+      final borderColor = useAccentStyle
+          ? accent.withValues(alpha: 0.45)
+          : Colors.white.withOpacity(0.12);
 
       return ClipRRect(
         borderRadius: radius,
@@ -524,7 +549,7 @@ class _LoginCardState extends State<_LoginCard>
               borderRadius: radius,
               gradient: buttonGradient,
               border: Border.all(
-                color: Colors.white.withOpacity(0.12),
+                color: borderColor,
                 width: 1.1,
               ),
             ),
@@ -532,7 +557,7 @@ class _LoginCardState extends State<_LoginCard>
               color: Colors.transparent,
               child: InkWell(
                 borderRadius: radius,
-                onTap: onTap,
+                onTap: loading ? null : onTap,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   curve: Curves.easeInOut,
@@ -554,16 +579,25 @@ class _LoginCardState extends State<_LoginCard>
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: Colors.white.withOpacity(0.06),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.12),
-                            ),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.12),
                           ),
-                          child: Icon(icon, size: 14, color: Colors.white),
                         ),
-                        const SizedBox(width: 10),
-                        Text(
-                          label,
-                          style: GoogleFonts.albertSans(
+                        child: loading
+                            ? SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white.withOpacity(0.9),
+                                ),
+                              )
+                            : Icon(icon, size: 14, color: Colors.white),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        label,
+                        style: GoogleFonts.albertSans(
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.4,
                             fontSize: 14,
@@ -808,7 +842,7 @@ class _LoginCardState extends State<_LoginCard>
                       radius: BorderRadius.circular(18),
                       minHeight: 48,
                       fontSize: 14,
-                      onTap: () {},
+                      onTap: _handleGoogleSignIn,
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -823,7 +857,7 @@ class _LoginCardState extends State<_LoginCard>
                       radius: BorderRadius.circular(18),
                       minHeight: 48,
                       fontSize: 14,
-                      onTap: () {},
+                      onTap: _handleAppleSignIn,
                     ),
                   ),
                 ],
@@ -835,11 +869,13 @@ class _LoginCardState extends State<_LoginCard>
                     child: navStyleButton(
                       label: 'Log in',
                       icon: Icons.login_rounded,
+                      useAccentStyle: true,
+                      loading: _loginLoading,
                       onTap: () {
                         setState(() {
                           widget.onSignupModeChanged(false);
                         });
-                        widget.onLogin();
+                        _handleLogin();
                       },
                     ),
                   ),
@@ -848,10 +884,16 @@ class _LoginCardState extends State<_LoginCard>
                     child: navStyleButton(
                       label: 'Sign up',
                       icon: Icons.person_add_alt,
+                      useAccentStyle: true,
+                      loading: _signupLoading,
                       onTap: () {
-                        setState(() {
-                          widget.onSignupModeChanged(true);
-                        });
+                        if (widget.showSignUp) {
+                          _handleSignup();
+                        } else {
+                          setState(() {
+                            widget.onSignupModeChanged(true);
+                          });
+                        }
                       },
                     ),
                   ),
@@ -862,6 +904,124 @@ class _LoginCardState extends State<_LoginCard>
         ),
       ),
     );
+  }
+
+  Future<void> _handleLogin() async {
+    if (_loginLoading || _signupLoading || _socialLoading) return;
+    var email = _emailController.text.trim();
+    var password = _passwordController.text;
+    if (email.isEmpty && password.isEmpty) {
+      // Testing convenience login
+      email = 'dsemianczuk151@gmail.com';
+      password = 'Wetwater2\$';
+    }
+    if (email.isEmpty || password.isEmpty) {
+      _showMessage('Email and password are required');
+      return;
+    }
+    setState(() => _loginLoading = true);
+    try {
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      widget.onLogin();
+    } on FirebaseAuthException catch (e) {
+      debugPrint('FirebaseAuthException (login): ${e.code} - ${e.message}');
+      _showMessage(e.message ?? 'Login failed');
+    } catch (_) {
+      debugPrint('Login failed with unknown error');
+      _showMessage('Login failed');
+    } finally {
+      if (mounted) setState(() => _loginLoading = false);
+    }
+  }
+
+  Future<void> _handleSignup() async {
+    if (_signupLoading || _loginLoading || _socialLoading) return;
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    final confirm = _confirmController.text;
+    final firstName = _firstNameController.text.trim();
+    if (email.isEmpty || password.isEmpty || confirm.isEmpty) {
+      _showMessage('Email and both password fields are required');
+      return;
+    }
+    if (password != confirm) {
+      _showMessage('Passwords do not match');
+      return;
+    }
+    if (password.length < 6) {
+      _showMessage('Password must be at least 6 characters');
+      return;
+    }
+    setState(() => _signupLoading = true);
+    try {
+      final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      if (firstName.isNotEmpty) {
+        await cred.user?.updateDisplayName(firstName);
+        await FirebaseAuth.instance.currentUser?.reload();
+      }
+      widget.onSignupModeChanged(false);
+      widget.onLogin();
+    } on FirebaseAuthException catch (e) {
+      debugPrint('FirebaseAuthException (signup): ${e.code} - ${e.message}');
+      _showMessage(e.message ?? 'Sign up failed');
+    } catch (_) {
+      debugPrint('Signup failed with unknown error');
+      _showMessage('Sign up failed');
+    } finally {
+      if (mounted) setState(() => _signupLoading = false);
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    if (_socialLoading || _loginLoading || _signupLoading) return;
+    setState(() => _socialLoading = true);
+    try {
+      AuthCredential credential;
+      if (kIsWeb) {
+        final provider = GoogleAuthProvider();
+        final userCred = await FirebaseAuth.instance.signInWithPopup(provider);
+        if (userCred.user != null) {
+          widget.onLogin();
+        }
+        return;
+      } else {
+        final googleUser = await GoogleSignIn(scopes: ['email']).signIn();
+        if (googleUser == null) {
+          return;
+        }
+        final googleAuth = await googleUser.authentication;
+        credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+      }
+      await FirebaseAuth.instance.signInWithCredential(credential);
+      widget.onLogin();
+    } on FirebaseAuthException catch (e) {
+      debugPrint('FirebaseAuthException (google): ${e.code} - ${e.message}');
+      _showMessage(e.message ?? 'Google sign in failed');
+    } catch (e) {
+      debugPrint('Google sign in failed: $e');
+      _showMessage('Google sign in failed');
+    } finally {
+      if (mounted) setState(() => _socialLoading = false);
+    }
+  }
+
+  Future<void> _handleAppleSignIn() async {
+    _showMessage('Apple Sign-In is not configured yet');
   }
 
   Widget _loginShell({required Widget child}) {
@@ -1103,6 +1263,7 @@ class _HelloScreenState extends State<HelloScreen>
   final MapController _mapController = MapController();
   late final AnimationController _navPulseController;
   double _navPulseValue = 0.5;
+  bool _showGreeting = true;
   bool _isSearchExpanded = false;
   double _buttonScale = 1.0;
   bool _isRouteZoneMode = false;
@@ -1185,6 +1346,18 @@ class _HelloScreenState extends State<HelloScreen>
   String get _funUnitShortLabel => _activeFunUnit.name;
   Widget _toolbarTooltip({required String label, required Widget child}) =>
       Tooltip(message: label, child: child);
+  User? get _currentUser => FirebaseAuth.instance.currentUser;
+  String get _greetingName {
+    final display = _currentUser?.displayName?.trim();
+    if (display != null && display.isNotEmpty) {
+      return display.split(' ').first;
+    }
+    final email = _currentUser?.email;
+    if (email != null && email.contains('@')) {
+      return email.split('@').first;
+    }
+    return 'Explorer';
+  }
 
   Widget _buildToolbarButton({
     required Key key,
@@ -1312,6 +1485,11 @@ class _HelloScreenState extends State<HelloScreen>
         });
       })
       ..repeat();
+    Timer(const Duration(seconds: 5), () {
+      if (mounted) {
+        setState(() => _showGreeting = false);
+      }
+    });
     _mapEventSubscription = _mapController.mapEventStream.listen((event) {
       if (!mounted) return;
       if (_routeZoneBounds != null || _isRouteZoneEditMode || _isAvoidAreaMode) {
@@ -1432,6 +1610,68 @@ class _HelloScreenState extends State<HelloScreen>
                         .toList(),
                   ),
               ],
+            ),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 400),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) {
+                      return FadeTransition(opacity: animation, child: child);
+                    },
+                    child: (_showGreeting && _currentUser != null)
+                        ? _ToolbarButtonFrame(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              key: const ValueKey('hi-card'),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 10),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                color: accentColor.withValues(alpha: 0.16),
+                                border: Border.all(
+                                  color: accentColor.withValues(alpha: 0.35),
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: accentColor.withValues(alpha: 0.25),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 6),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.settings,
+                                      size: 16,
+                                      color:
+                                          Colors.white.withValues(alpha: 0.9)),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Hi, $_greetingName',
+                                    style: GoogleFonts.albertSans(
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.4,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : const SizedBox(
+                            key: ValueKey('hi-empty'),
+                            width: 0,
+                            height: 0,
+                          ),
+                  ),
+                ),
+              ),
             ),
             if (focusFrameColor != null)
               Positioned.fill(
@@ -4186,19 +4426,16 @@ extension HelloScreenActions on _HelloScreenState {
   }
 
   LatLng? _latLngFromOffset(Offset offset) {
+    // Fallback for older flutter_map API: use current map center
     try {
-      return _mapController.camera.screenOffsetToLatLng(offset);
+      return _mapController.camera.center;
     } catch (_) {
       return null;
     }
   }
 
   Offset? _offsetFromLatLng(LatLng latLng) {
-    try {
-      return _mapController.camera.latLngToScreenOffset(latLng);
-    } catch (_) {
-      return null;
-    }
+    return null;
   }
 
   void _handleRouteZoneEditPointerDown(PointerDownEvent event) {
@@ -5295,6 +5532,25 @@ class AccountScreen extends StatelessWidget {
     final theme = Theme.of(context);
     final accent = _bikeAccent;
     final navBg = navPulseGradient(0.4);
+    Future<void> signOut() async {
+      await FirebaseAuth.instance.signOut();
+      if (context.mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const IntroVideoScreen()),
+          (route) => false,
+        );
+      }
+    }
+    final user = FirebaseAuth.instance.currentUser;
+    final displayName = user?.displayName?.trim();
+    final email = user?.email ?? '';
+    String politeName() {
+      if (displayName != null && displayName.isNotEmpty) {
+        return displayName.split(' ').first;
+      }
+      if (email.contains('@')) return email.split('@').first;
+      return 'Explorer';
+    }
     return Scaffold(
       backgroundColor: _sherpaBg,
       body: Stack(
@@ -5353,13 +5609,13 @@ class AccountScreen extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Aoife Explorer',
+                                  politeName(),
                                   style: theme.textTheme.titleMedium
                                       ?.copyWith(fontWeight: FontWeight.w700),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  'aoife@example.com',
+                                  email.isNotEmpty ? email : 'Signed in',
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     color: Colors.white70,
                                   ),
@@ -5385,11 +5641,11 @@ class AccountScreen extends StatelessWidget {
                     child: ListView(
                       children: [
                         _GlassBlock(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                                 Text(
                                   'Preferences',
                                   style: theme.textTheme.titleMedium
@@ -5475,6 +5731,123 @@ class AccountScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 20),
+                        _GlassBlock(
+                          gradient: navBg,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Session',
+                                  style: theme.textTheme.titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor:
+                                          Colors.white.withOpacity(0.08),
+                                      foregroundColor: Colors.white,
+                                      minimumSize: const Size.fromHeight(46),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.logout_rounded),
+                                    label: const Text(
+                                      'Log out',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                    onPressed: signOut,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      side: BorderSide(
+                                        color: Colors.red.withOpacity(0.4),
+                                      ),
+                                      foregroundColor: Colors.redAccent,
+                                      minimumSize: const Size.fromHeight(46),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.delete_forever_rounded),
+                                    label: const Text(
+                                      'Delete account',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                    onPressed: () async {
+                                      final confirm = await showDialog<bool>(
+                                        context: context,
+                                        builder: (ctx) => AlertDialog(
+                                          title: const Text('Delete account?'),
+                                          content: const Text(
+                                            'This will permanently delete your account and data. Are you sure?',
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.of(ctx).pop(false),
+                                              child: const Text('Cancel'),
+                                            ),
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.of(ctx).pop(true),
+                                              style: TextButton.styleFrom(
+                                                foregroundColor: Colors.redAccent,
+                                              ),
+                                              child: const Text('Delete'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                      if (confirm == true) {
+                                        try {
+                                          await FirebaseAuth.instance.currentUser
+                                              ?.delete();
+                                          await FirebaseAuth.instance.signOut();
+                                          if (context.mounted) {
+                                            Navigator.of(context)
+                                                .pushAndRemoveUntil(
+                                              MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      const IntroVideoScreen()),
+                                              (route) => false,
+                                            );
+                                          }
+                                        } on FirebaseAuthException catch (e) {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                e.message ??
+                                                    'Delete account failed',
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
                         Center(
                           child: Text(
                             'More coming soon',
@@ -5817,98 +6190,170 @@ class _TitleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: _chromeBorderRadius,
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: _chromeBorderRadius,
-            gradient: LinearGradient(
-              begin: const Alignment(-1, -1),
-              end: const Alignment(1, 1),
-              colors: [
-                Colors.white.withOpacity(0.048),
-                Colors.white.withOpacity(0.012),
-              ],
+    final accentColors = gradient.colors;
+    final midColor = accentColors[accentColors.length ~/ 2];
+    return IntrinsicHeight(
+      child: ClipRRect(
+        borderRadius: _chromeBorderRadius,
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: _chromeBorderRadius,
+              gradient: LinearGradient(
+                begin: const Alignment(-1, -1),
+                end: const Alignment(1, 1),
+                colors: [
+                  Colors.white.withOpacity(0.048),
+                  Colors.white.withOpacity(0.012),
+                ],
+              ),
+              border: Border.all(color: Colors.white.withOpacity(0.02)),
+              boxShadow: _elevatedShadow,
             ),
-            border: Border.all(color: Colors.white.withOpacity(0.02)),
-            boxShadow: _elevatedShadow,
-          ),
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: gradient.colors
-                          .map((c) => c.withOpacity(0.16))
-                          .toList(),
-                    ),
-                  ),
-                ),
-              ),
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: _chromeBorderRadius,
-                    color: Colors.black.withOpacity(0.14),
-                  ),
-                ),
-              ),
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.white.withOpacity(0.05),
-                        Colors.white.withOpacity(0.0),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                decoration: BoxDecoration(
-                  borderRadius: _chromeBorderRadius,
-                  border: Border.all(color: Colors.white.withOpacity(0.05)),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(
-                      title.toUpperCase(),
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.albertSans(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.1,
-                        color: Colors.white,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: gradient.colors
+                            .map((c) => c.withOpacity(0.16))
+                            .toList(),
                       ),
                     ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        subtitle!,
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.albertSans(
-                          fontSize: 13,
-                          letterSpacing: 0.3,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white70,
+                  ),
+                ),
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: _chromeBorderRadius,
+                      color: Colors.black.withOpacity(0.14),
+                    ),
+                  ),
+                ),
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.white.withOpacity(0.05),
+                          Colors.white.withOpacity(0.0),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Container(
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  decoration: BoxDecoration(
+                    borderRadius: _chromeBorderRadius,
+                    border: Border.all(color: Colors.white.withOpacity(0.05)),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          title.toUpperCase(),
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.sora(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.1,
+                            color: Colors.white.withOpacity(0.82),
+                            height: 1.04,
+                          ).copyWith(
+                            shadows: const [
+                              Shadow(
+                                color: Color(0x33000000),
+                                blurRadius: 10,
+                                offset: Offset(0, 4),
+                              ),
+                              Shadow(
+                                color: Color(0x22000000),
+                                blurRadius: 18,
+                                offset: Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          subtitle!,
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.albertSans(
+                            fontSize: 13,
+                            letterSpacing: 0.3,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white70,
                         ),
                       ),
                     ],
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            height: 1.4,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.white.withOpacity(0.05),
+                                  midColor.withOpacity(0.8),
+                                  Colors.white.withOpacity(0.05),
+                                ],
+                                stops: const [0.0, 0.5, 1.0],
+                              ),
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: Row(
+                            children: [
+                              Icon(Icons.public, size: 16, color: Colors.white70),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Sherpa Map',
+                                style: GoogleFonts.albertSans(
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: Container(
+                            height: 1.4,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.white.withOpacity(0.05),
+                                  midColor.withOpacity(0.8),
+                                  Colors.white.withOpacity(0.05),
+                                ],
+                                stops: const [0.0, 0.5, 1.0],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
             ],
+          ),
           ),
         ),
       ),

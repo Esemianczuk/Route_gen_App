@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "699346646474",
+    "project_id": "route-studio",
+    "storage_bucket": "route-studio.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:699346646474:android:ef43f7d73a4f54d0e60b33",
+        "android_client_info": {
+          "package_name": "com.example.route_gen_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "699346646474-7ve8blpa97i0ampnthlo9lokjn1cvlfk.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAV3VsD_GnSqK-6R-gVJ9rHU6IfeFYCeo8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "699346646474-7ve8blpa97i0ampnthlo9lokjn1cvlfk.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "699346646474-envcs0ig5d2ogo2sti5adssko1iok8qu.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.routeGenApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
