@@ -46,3 +46,4 @@ app.*.map.json
 
 # Large assets (keep out of git; use LFS or store elsewhere)
 /assets/intro_loop.mp4
+assets/intro_loop.mp4
