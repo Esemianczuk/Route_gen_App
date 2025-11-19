@@ -6204,11 +6204,11 @@ class _TitleCard extends StatelessWidget {
                 begin: const Alignment(-1, -1),
                 end: const Alignment(1, 1),
                 colors: [
-                  Colors.white.withOpacity(0.048),
-                  Colors.white.withOpacity(0.012),
+                  Colors.white.withOpacity(0.028),
+                  Colors.white.withOpacity(0.006),
                 ],
               ),
-              border: Border.all(color: Colors.white.withOpacity(0.02)),
+              border: Border.all(color: Colors.white.withOpacity(0.015)),
               boxShadow: _elevatedShadow,
             ),
             child: Stack(
@@ -6225,29 +6225,29 @@ class _TitleCard extends StatelessWidget {
                       ),
                     ),
                   ),
+              ),
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: _chromeBorderRadius,
+                    color: Colors.black.withOpacity(0.08),
+                  ),
                 ),
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: _chromeBorderRadius,
-                      color: Colors.black.withOpacity(0.14),
+              ),
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withOpacity(0.03),
+                        Colors.white.withOpacity(0.0),
+                      ],
                     ),
                   ),
                 ),
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.white.withOpacity(0.05),
-                          Colors.white.withOpacity(0.0),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+              ),
                 Container(
                   alignment: Alignment.center,
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -6255,33 +6255,39 @@ class _TitleCard extends StatelessWidget {
                     borderRadius: _chromeBorderRadius,
                     border: Border.all(color: Colors.white.withOpacity(0.05)),
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Text(
-                          title.toUpperCase(),
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.sora(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1.1,
-                            color: Colors.white.withOpacity(0.82),
-                            height: 1.04,
-                          ).copyWith(
-                            shadows: const [
-                              Shadow(
-                                color: Color(0x33000000),
-                                blurRadius: 10,
-                                offset: Offset(0, 4),
-                              ),
-                              Shadow(
-                                color: Color(0x22000000),
-                                blurRadius: 18,
-                                offset: Offset(0, 10),
-                              ),
+                        ShaderMask(
+                          shaderCallback: (bounds) => LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Colors.white.withOpacity(0.95),
+                              Colors.white.withOpacity(0.7),
+                              Colors.white.withOpacity(0.95),
                             ],
+                          ).createShader(bounds),
+                          child: Text(
+                            title.toUpperCase(),
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.bricolageGrotesque(
+                              fontSize: 30,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.4,
+                              height: 1.03,
+                              color: Colors.white,
+                            ).copyWith(
+                              shadows: const [
+                                Shadow(
+                                  color: Color(0x33000000),
+                                  blurRadius: 14,
+                                  offset: Offset(0, 5),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       if (subtitle != null) ...[
